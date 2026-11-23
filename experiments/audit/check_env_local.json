@@ -1,0 +1,21 @@
+{
+  "versions": {
+    "python": "3.12.16",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "tensorflow": "IMPORT FAILED: ModuleNotFoundError: No module named 'tensorflow'",
+    "keras": "IMPORT FAILED: ModuleNotFoundError: No module named 'keras'",
+    "tf2onnx": "IMPORT FAILED: ModuleNotFoundError: No module named 'tf2onnx'",
+    "onnx": "IMPORT FAILED: ModuleNotFoundError: No module named 'onnx'",
+    "onnxruntime": "1.32.0",
+    "numpy": "2.5.5",
+    "pandas": "3.1.1",
+    "PIL": "13.0.0",
+    "matplotlib": "3.11.2",
+    "fastapi": "0.165.0",
+    "uvicorn": "0.54.0",
+    "locust": "2.47.0",
+    "streamlit": "IMPORT FAILED: ModuleNotFoundError: No module named 'streamlit'",
+    "protobuf": "7.36.2"
+  }
+}
+FAILED IMPORTS: ['tensorflow', 'keras', 'tf2onnx', 'onnx', 'streamlit']

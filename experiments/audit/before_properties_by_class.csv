@@ -1,0 +1,7 @@
+,width,width,width,width,height,height,height,height,aspect_ratio,aspect_ratio,aspect_ratio,aspect_ratio,megapixels,megapixels,megapixels,megapixels,file_size_kb,file_size_kb,file_size_kb,file_size_kb
+,median,mean,min,max,median,mean,min,max,median,mean,min,max,median,mean,min,max,median,mean,min,max
+label,,,,,,,,,,,,,,,,,,,,
+cloudy,272.0,410.041,183,2000,178.0,274.292,134,2000,1.5,1.514,0.666,2.362,0.05,0.183,0.03,4.0,6.16,15.521,2.36,302.05
+rainy,550.0,637.51,183,4288,351.5,414.476,158,2848,1.506,1.548,0.666,2.221,0.183,0.466,0.036,12.212,29.605,67.95,6.68,1083.65
+shiny,280.0,420.856,158,2880,177.0,282.548,111,1800,1.508,1.511,0.56,2.703,0.05,0.217,0.024,5.184,8.46,24.232,2.09,494.18
+sunrise,281.5,551.486,190,4752,180.0,363.716,94,3195,1.5,1.529,0.619,3.192,0.05,0.5,0.028,15.054,7.16,43.26,2.31,1336.23

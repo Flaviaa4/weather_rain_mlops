@@ -1,0 +1,12 @@
+[
+  {
+    "file_a": "sunrise193_jpg.rf.",
+    "file_b": "sunrise291_jpg.rf.",
+    "reason": "visual review: different photos, one shows an airplane wing, both are a sea sunset with a centered sun"
+  },
+  {
+    "file_a": "sunrise92_jpg.rf.",
+    "file_b": "cloudy263_jpg.rf.",
+    "reason": "visual review: different photos, a dusk horizon with a tree vs an overcast field with a fence"
+  }
+]

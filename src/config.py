@@ -1,0 +1,67 @@
+import os
+from pathlib import Path
+
+
+def env_path(name, default):
+    return Path(os.environ.get(name, default)).resolve()
+
+
+def env_int(name, default):
+    return int(os.environ.get(name, default))
+
+
+def env_float(name, default):
+    return float(os.environ.get(name, default))
+
+
+def env_list(name, default):
+    raw = os.environ.get(name)
+    return [item.strip() for item in raw.split(",")] if raw else list(default)
+
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = env_path("DATA_DIR", ROOT_DIR / "data")
+MODELS_DIR = env_path("MODELS_DIR", ROOT_DIR / "models")
+EXPERIMENTS_DIR = env_path("EXPERIMENTS_DIR", ROOT_DIR / "experiments")
+UPLOADS_DIR = env_path("UPLOADS_DIR", DATA_DIR / "uploads")
+QUARANTINE_DIR = env_path("QUARANTINE_DIR", DATA_DIR / "quarantine")
+AUDIT_DIR = EXPERIMENTS_DIR / "audit"
+FIGURES_DIR = EXPERIMENTS_DIR / "figures"
+RUNS_DIR = EXPERIMENTS_DIR / "runs"
+RESULTS_CSV = EXPERIMENTS_DIR / "results.csv"
+DB_PATH = env_path("DB_PATH", DATA_DIR / "weather.db")
+
+SPLITS = ["train", "valid", "test"]
+CLASS_NAMES = env_list("CLASS_NAMES", ["cloudy", "rainy", "shiny", "sunrise"])
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+
+IMAGE_SIZE = env_int("IMAGE_SIZE", 128)
+CHANNELS = 3
+BATCH_SIZE = env_int("BATCH_SIZE", 32)
+SEEDS = [int(s) for s in env_list("SEEDS", ["11", "22", "33", "44", "55"])]
+
+MAX_EPOCHS = env_int("MAX_EPOCHS", 150)
+EARLY_STOP_PATIENCE = env_int("EARLY_STOP_PATIENCE", 15)
+LR_PATIENCE = env_int("LR_PATIENCE", 5)
+LR_FACTOR = env_float("LR_FACTOR", 0.5)
+MIN_LR = env_float("MIN_LR", 1e-6)
+
+DHASH_SIZE = env_int("DHASH_SIZE", 8)
+DUPLICATE_MAX_DISTANCE = env_int("DUPLICATE_MAX_DISTANCE", 4)
+THUMB_SIZE = env_int("THUMB_SIZE", 32)
+DUPLICATE_MAX_MAE = env_float("DUPLICATE_MAX_MAE", 0.07)
+DUPLICATE_MIN_CORR = env_float("DUPLICATE_MIN_CORR", 0.98)
+CORR_STAGE_MIN_CORR = env_float("CORR_STAGE_MIN_CORR", 0.94)
+CORR_STAGE_MAX_MAE = env_float("CORR_STAGE_MAX_MAE", 0.10)
+
+UNCERTAIN_THRESHOLD = env_float("UNCERTAIN_THRESHOLD", 0.6)
+RETRAIN_UPLOAD_THRESHOLD = env_int("RETRAIN_UPLOAD_THRESHOLD", 40)
+MAX_UPLOAD_MB = env_int("MAX_UPLOAD_MB", 10)
+MIN_FREE_DISK_MB = env_int("MIN_FREE_DISK_MB", 500)
+ONNX_THREADS = env_int("ONNX_THREADS", 1)
+
+H5_PATH = MODELS_DIR / "weather_cnn.h5"
+ONNX_PATH = MODELS_DIR / "weather_cnn.onnx"
+CLASS_NAMES_PATH = MODELS_DIR / "class_names.json"
+METRICS_PATH = MODELS_DIR / "metrics.json"
+ARCHIVE_DIR = MODELS_DIR / "archive"

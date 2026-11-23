@@ -1,0 +1,5 @@
+split,cloudy,rainy,shiny,sunrise,total
+train,200,149,157,263,769
+valid,57,23,39,46,165
+test,34,34,54,43,165
+total,291,206,250,352,1099
