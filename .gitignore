@@ -18,7 +18,8 @@ models/archive/*
 !models/archive/.gitkeep
 locust/results/*.csv
 !locust/results/.gitkeep
-*.dbdata/train/
+*.db
+data/train/
 data/valid/
 data/test/
 data/train/
@@ -27,4 +28,5 @@ data/test/
 data/quarantine/
 data/data.zip
 !experiments/colab_section*.log
+!experiments/kaggle_section*.log
 experiments/runs/

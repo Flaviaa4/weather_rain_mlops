@@ -49,6 +49,10 @@ Format per entry: id, date, section, what changes, hypothesis (direction, size, 
 
 Validation set, `experiments/sanity/reference_baselines.json`. Majority class (always sunrise): accuracy 0.299, macro F1 0.115, rainy F1 0. Random guess with the train class prior (1000 draws): accuracy 0.260 +- 0.036, macro F1 0.243 +- 0.035, rainy F1 0.160 +- 0.068. Uniform random: accuracy 0.248, macro F1 0.240 +- 0.035.
 
+## Section 3 compute platform change (2026-11-24)
+
+Colab gave no GPU. On the Colab CPU the timing step measured R0 at 124 s per epoch, which puts group C alone at about 10 hours, so CPU training is not workable. The Section 3 grid moves to Kaggle (GPU T4, one device via CUDA_VISIBLE_DEVICES=0) with `kaggle/run_section.ipynb`. The launcher enforces the TensorFlow 2.21.0 and Keras 3.13.2 pins and records the Kaggle Python version, which may differ from 3.13. The rule 0B.4 budget is applied to Kaggle GPU hours: COLAB_UNITS_PER_HOUR=1 and COLAB_UNITS_REMAINING set to the weekly GPU hours left. No result was produced on the CPU, so nothing is discarded.
+
 ## S3-E1: Can the pipeline overfit one batch? (2026-11-24)
 
 - Change: R0 architecture without augmentation, dropout, L2 and class weights, trained for 300 steps on one stratified batch of 32 train images (8 per class, seed 11).

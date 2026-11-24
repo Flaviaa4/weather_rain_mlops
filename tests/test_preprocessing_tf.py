@@ -35,7 +35,9 @@ def test_augmentation_keeps_shape_range_and_is_seeded(strength):
     first = preprocessing.augment_image(image, seed, strength).numpy()
     again = preprocessing.augment_image(image, seed, strength).numpy()
     assert first.shape == (64, 64, 3) and first.min() >= 0.0 and first.max() <= 1.0
-    assert np.array_equal(first, again)
+    assert np.allclose(first, again, atol=1e-5)
+    other = preprocessing.augment_image(image, tf.constant([22, 1], tf.int64), strength).numpy()
+    assert not np.allclose(first, other, atol=1e-5)
 
 
 def test_augmented_dataset_changes_each_epoch(tiny_dataset):

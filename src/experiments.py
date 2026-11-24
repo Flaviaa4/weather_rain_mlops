@@ -352,7 +352,7 @@ def run_smoke(ctx):
 
 def require_gpu():
     if runtime_info()["gpu"] == "none" and os.environ.get("ALLOW_CPU") != "1":
-        raise SystemExit("No GPU visible. In Colab: Runtime > Change runtime type > T4 GPU, then run again.")
+        raise SystemExit("No GPU visible. Colab: Runtime > Change runtime type > T4 GPU. Kaggle: Settings > Accelerator > GPU T4 x2.")
 
 
 def run_group(section, group, ctx):

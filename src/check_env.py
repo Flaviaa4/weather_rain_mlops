@@ -117,4 +117,4 @@ if __name__ == "__main__":
     failed = [k for k, v in result["versions"].items() if str(v).startswith("IMPORT FAILED")]
     print("FAILED IMPORTS:", failed if failed else "none")
     if "gpus" in result and not any(name.startswith("/physical_device:GPU") for name in result["gpus"]):
-        print("WARNING: no GPU visible to TensorFlow. In Colab use Runtime > Change runtime type > T4 GPU.")
+        print("WARNING: no GPU visible to TensorFlow. Colab: Runtime > Change runtime type > T4 GPU. Kaggle: Settings > Accelerator > GPU T4 x2.")
