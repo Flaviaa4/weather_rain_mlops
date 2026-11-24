@@ -1,0 +1,13 @@
+......................                                                   [100%]
+22 passed in 10.37s
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1795516561.995148    4552 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+I0000 00:00:1795516562.112765    4552 cpu_feature_guard.cc:227] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1795516565.861276    4552 cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+E0000 00:00:1795516567.357074    4552 cuda_platform.cc:52] failed call to cuInit: INTERNAL: CUDA error: Failed call to cuInit: UNKNOWN ERROR (303)
+Augmentation previews written:
+/content/drive/MyDrive/weather_rain_mlops/experiments/figures/augmentation_preview_light.png
+/content/drive/MyDrive/weather_rain_mlops/experiments/figures/augmentation_preview_medium.png
+/content/drive/MyDrive/weather_rain_mlops/experiments/figures/augmentation_preview_strong.png
