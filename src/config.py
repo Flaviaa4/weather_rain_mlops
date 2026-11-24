@@ -54,6 +54,17 @@ DUPLICATE_MIN_CORR = env_float("DUPLICATE_MIN_CORR", 0.98)
 CORR_STAGE_MIN_CORR = env_float("CORR_STAGE_MIN_CORR", 0.94)
 CORR_STAGE_MAX_MAE = env_float("CORR_STAGE_MAX_MAE", 0.10)
 
+AUGMENT_STRENGTH = os.environ.get("AUGMENT_STRENGTH", "medium")
+AUGMENT_STRENGTHS = {
+    "none": None,
+    "light": {"flip": True, "zoom": 0.05, "brightness": 0.05, "contrast": 0.10, "saturation": 0.10, "hue": 0.0},
+    "medium": {"flip": True, "zoom": 0.10, "brightness": 0.10, "contrast": 0.20, "saturation": 0.20, "hue": 0.02},
+    "strong": {"flip": True, "zoom": 0.20, "brightness": 0.20, "contrast": 0.35, "saturation": 0.35, "hue": 0.05},
+}
+EDA_SIZES = [96, 128, 160]
+EDA_REFERENCE_SIZE = env_int("EDA_REFERENCE_SIZE", 224)
+SAMPLE_SEED = env_int("SAMPLE_SEED", 11)
+
 UNCERTAIN_THRESHOLD = env_float("UNCERTAIN_THRESHOLD", 0.6)
 RETRAIN_UPLOAD_THRESHOLD = env_int("RETRAIN_UPLOAD_THRESHOLD", 40)
 MAX_UPLOAD_MB = env_int("MAX_UPLOAD_MB", 10)

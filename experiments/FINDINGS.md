@@ -9,6 +9,31 @@
 - Colab check: `colab/run_section.ipynb` with SECTION = 1 records Colab's preinstalled versions, installs `requirements-trainer.txt` constrained to Colab's own TensorFlow, Keras, protobuf and numpy, then runs `python -m src.check_env --profile trainer` (GPU, .h5 save, Keras to ONNX round trip). `requirements.txt` gets pinned from that report.
 - Disk space is also a blocker for Section 12: Docker Desktop stores images on C:, and the trainer image alone (TensorFlow) is about 2 to 3 GB.
 
+### Colab check and pinned versions (2026-11-24)
+
+Report: `experiments/audit/check_env_colab.json`, `pip_list_preinstalled.txt`, `python_version.txt`.
+
+| Package | Colab | Pinned | Source of pin |
+|---|---|---|---|
+| Python | 3.13.18 | 3.13 (Docker base image) | Colab |
+| tensorflow | 2.21.0 | 2.21.0 | Colab preinstalled |
+| keras | 3.13.2 | 3.13.2 | Colab preinstalled |
+| tf2onnx | 1.17.0 | 1.17.0 | installed by the launcher, checked |
+| onnx | 1.23.2 | 1.23.2 | installed by the launcher, checked |
+| onnxruntime | 1.32.0 | 1.32.0 | installed by the launcher, checked |
+| numpy, pandas, pillow, matplotlib | 2.4.6, 2.2.3, 11.3.0, 3.10.0 | same | Colab preinstalled |
+| protobuf, h5py, ml_dtypes, scikit-learn | 6.33.6, 3.14.0, 0.6.0, 1.6.1 | same | Colab preinstalled |
+| fastapi, uvicorn, python-multipart | 0.141.1, 0.54.0, 0.0.33 | same | Colab preinstalled |
+| requests | 2.32.4 | 2.34.2 | locust 2.47.0 needs 2.33.1 or newer; not used in training |
+| streamlit | not installed | 1.66.1 | PyPI, resolver-checked |
+| locust, pytest | not installed | 2.47.0, 9.2.0 | local install, import-checked |
+
+- Checks passed: every import, `.h5` save, and the Keras to ONNX round trip with `tf2onnx.convert.from_keras` (max abs difference 4.5e-08). The SavedModel fallback was not needed.
+- Surprise: `"gpus": []`. The preinstalled torch packages are `+cpu` builds, so the check ran on a CPU runtime, not a T4. Versions, `.h5` save and ONNX export do not depend on the GPU, so the pins stand. GPU training itself is not verified yet. `check_env` now prints a warning when no GPU is visible.
+- `requirements.txt` (all packages) and `requirements-trainer.txt`, `requirements-api.txt`, `requirements-ui.txt`, `requirements-dev.txt` (subsets) all resolve for Python 3.13 on manylinux_2_28 x86_64 (`uv pip compile`). The trainer set resolves to exactly the Colab versions.
+- Docker images: Python 3.13 on a Debian-based slim image. The TensorFlow wheel needs glibc 2.27 or newer and onnxruntime needs 2.28 or newer, so Alpine is not an option.
+- Local drift: the local `.venv` is Python 3.12 with newer numpy (2.5.5), pandas (3.1.1), pillow (13.0.0), matplotlib (3.11.2), protobuf (7.36.2) and fastapi (0.165.0). Local tests pass on these, but local results are not proof for the pinned versions. The Docker images and Colab are the reference.
+
 ### Data integrity
 
 - 1099 JPG files, counts match the dataset card exactly. 0 corrupt files, 0 unexpected folders.
@@ -58,7 +83,46 @@ The splits are not stratified (chi-square 21.7 before cleaning, p about 0.001; 1
 
 ### Open questions
 
-1. Colab Python, TensorFlow and Keras versions (needed to pin requirements and the Docker trainer image).
+1. Closed 2026-11-24: Colab runs Python 3.13.18, TensorFlow 2.21.0, Keras 3.13.2. Requirements are pinned. Still open: confirm a T4 is visible before the first Section 3 run, because the Section 1 check ran on a CPU runtime.
 2. Can disk space be freed on C:? Needed: about 2 GB for local TensorFlow now, and about 8 to 10 GB more for Docker images in Section 12.
 3. Is the size and sharpness difference for rainy a shortcut or real signal? To test in Sections 4 and 6.
 4. Should the ambiguous storm-cloud images stay labeled cloudy? Not changed for now. The Rwanda use case cares most about this boundary.
+
+## Section 2: Preprocessing and exploratory analysis
+
+### Preprocessing
+
+- `src/preprocessing.py`: one PIL path for training and inference. `preprocess_image` = EXIF transpose, transparent pixels flattened on white, convert to RGB, bilinear resize to a 128x128 square (aspect ratios are 1.50 to 1.51 in every class, so stretching adds no class signal), uint8 array, divide by 255. The API will call `preprocess_image_bytes`.
+- Training loads each split into memory with that same function (`load_split`). `build_dataset` only adds shuffling, augmentation and batching with `tf.data`. So training and inference preprocessing are identical by construction, and two tests prove it: `test_training_loader_equals_inference_path` (local) and `test_eval_dataset_equals_inference_path` (TensorFlow, Colab).
+- The module does not import TensorFlow (a test checks this in a fresh interpreter). TensorFlow is imported inside the augmentation and dataset functions only.
+- Augmentation lives in `tf.data` (stateless random ops, seeds from `Dataset.random(seed, rerandomize_each_iteration=True)`), so the exported model stays a plain inference graph and each epoch gets new augmentations. Strengths in `config.AUGMENT_STRENGTHS`: flip, zoom crop, brightness, contrast, saturation, hue. Light has no hue shift.
+- Tests: 24 local tests pass. The 6 TensorFlow tests in `tests/test_preprocessing_tf.py` run in Colab (pending).
+
+### Figures (`experiments/figures/`)
+
+`class_distribution.png`, `sample_grid.png`, `image_size_distribution.png`, `feature_boxplots.png`, `image_size_comparison.png`. Feature statistics use train and valid only (863 images). The test set was used for file counts only. Tables and generated interpretations are in `experiments/eda/`.
+
+### What three features say
+
+Medians at 128 px. AUC is one-vs-rest or pairwise (0.5 = no signal).
+
+1. **Mean saturation: color separates the sunny classes from the gray ones.** Sunrise 0.58, shiny 0.45, cloudy 0.18, rainy 0.11. 47% of rainy and 24% of cloudy images are nearly colorless (saturation below 0.1), and no shiny or sunrise image is. Story: overcast and rainy skies are gray. Shortcut risk: medium. It is real weather signal, but the model can learn "gray means cloudy or rainy", so a gray-toned or black-and-white sunny photo will likely be misread, and saturation barely separates rainy from cloudy (AUC 0.36). To test with the Section 6 grayscale perturbation.
+2. **Blue-to-red ratio: the shiny vs sunrise boundary is almost pure color.** Shiny 1.52, cloudy 1.09, rainy 0.99, sunrise 0.48. Sunrise vs shiny AUC 0.04 (mean blue alone: 0.01). Story: shiny is a blue sky, sunrise is a warm horizon. Shortcut risk: low for the label (it is what the label means), but it makes hue augmentation risky for these two classes, and a blue-toned sunrise (several exist, see Section 1) is a likely error. Rainy vs cloudy AUC 0.28: rainy is slightly warmer, probably street scenes rather than sky.
+3. **Sharpness (Laplacian variance): the only feature that separates rainy from cloudy.** Rainy 0.0118, shiny 0.0068, sunrise 0.0037, cloudy 0.0027. Rainy vs cloudy AUC 0.90, rainy vs rest 0.83. Brightness gives no help on that pair (AUC 0.55). Story: rain streaks, splashes, wet streets and crowds are fine, high-contrast texture, while cloud fields are smooth. The Section 1 worry was that this is the large-file shortcut. S2-E1 says mostly not: among small images (0.06 MP or less) the AUC is still 0.93. The remaining risk is scene content: a busy street on a dry day may be called rainy, and a sky photo during light rain (the Rwanda use case) may be called cloudy. To check in the Section 4 misclassified gallery and with field photos.
+
+Brightness is also informative (shiny brightest at 0.56, sunrise darkest at 0.38, shiny vs rest AUC 0.81) but adds nothing for rainy vs cloudy. Contrast separates nothing (all AUC 0.39 to 0.60).
+
+### Image size (S2-E1)
+
+- Color statistics do not change with size (correlation 0.998 or more with the 224 reference at 96, 128 and 160). Fine detail does: rainy loses the most (median PSNR vs 224: 28.7 dB at 96, 30.8 at 128, 33.1 at 160, against 36.3 / 39.3 / 42.3 for cloudy). In `image_size_comparison.png` rain streaks are faint at 96 and clear at 160 (bottom row: the largest rainy photo).
+- 128 is the largest size where almost no image is upscaled (0 to 1.4% per class). At 160, 12 to 16% of cloudy, shiny and sunrise images are upscaled and no rainy image is. At 224 it is 72% of cloudy vs 35% of rainy. Larger sizes add a "blurry means not rainy" resolution shortcut.
+- Decision for R0: 128 px. 160 is a reasonable Section 5 grid candidate for rain detail, but only together with the downscale-then-upscale robustness test.
+
+### Augmentation preview (S2-E2)
+
+Pending: runs in Colab and comes back as `experiments/figures/augmentation_preview_{light,medium,strong}.png`. Rows: one random train image per class, plus the least saturated sunrise and the brightest cloudy (the images most likely to change label).
+
+### Open questions
+
+5. Is medium augmentation (hue 0.02, brightness 0.1) safe for sunrise? Answered by the S2-E2 previews.
+6. Rainy images are partly street scenes: how much of the rainy class is "people with umbrellas" rather than weather? Section 4 gallery.

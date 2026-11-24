@@ -1,0 +1,12 @@
+# Feature interpretations (generated)
+
+Train and valid, 863 images, features at 128 px.
+
+- **brightness**: Brightness is highest for shiny (median 0.562) and lowest for sunrise (median 0.379). Most separated one-vs-rest: shiny: AUC 0.81, strong separation (higher). Pairs: rainy vs cloudy: AUC 0.55, no separation (higher); sunrise vs shiny: AUC 0.11, strong separation (lower).
+- **contrast**: Contrast is highest for sunrise (median 0.204) and lowest for rainy (median 0.178). Most separated one-vs-rest: rainy: AUC 0.39, weak separation (lower). Pairs: rainy vs cloudy: AUC 0.44, no separation (lower); sunrise vs shiny: AUC 0.54, no separation (higher).
+- **saturation**: Mean saturation is highest for sunrise (median 0.582) and lowest for rainy (median 0.108). Most separated one-vs-rest: sunrise: AUC 0.88, strong separation (higher). Pairs: rainy vs cloudy: AUC 0.36, weak separation (lower); sunrise vs shiny: AUC 0.70, moderate separation (higher).
+- **mean_r**: Mean red is highest for sunrise (median 0.499) and lowest for cloudy (median 0.434). Most separated one-vs-rest: sunrise: AUC 0.62, weak separation (higher). Pairs: rainy vs cloudy: AUC 0.59, weak separation (higher); sunrise vs shiny: AUC 0.60, weak separation (higher).
+- **mean_g**: Mean green is highest for shiny (median 0.600) and lowest for sunrise (median 0.346). Most separated one-vs-rest: shiny: AUC 0.86, strong separation (higher). Pairs: rainy vs cloudy: AUC 0.55, no separation (higher); sunrise vs shiny: AUC 0.06, strong separation (lower).
+- **mean_b**: Mean blue is highest for shiny (median 0.687) and lowest for sunrise (median 0.236). Most separated one-vs-rest: sunrise: AUC 0.07, strong separation (lower). Pairs: rainy vs cloudy: AUC 0.47, no separation (lower); sunrise vs shiny: AUC 0.01, strong separation (lower).
+- **blue_red_ratio**: Blue-to-red ratio is highest for shiny (median 1.519) and lowest for sunrise (median 0.485). Most separated one-vs-rest: sunrise: AUC 0.05, strong separation (lower). Pairs: rainy vs cloudy: AUC 0.28, moderate separation (lower); sunrise vs shiny: AUC 0.04, strong separation (lower).
+- **sharpness**: Sharpness (laplacian variance) is highest for rainy (median 0.012) and lowest for cloudy (median 0.003). Most separated one-vs-rest: rainy: AUC 0.83, strong separation (higher). Pairs: rainy vs cloudy: AUC 0.90, strong separation (higher); sunrise vs shiny: AUC 0.32, moderate separation (lower).

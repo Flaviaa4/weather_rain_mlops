@@ -18,8 +18,33 @@ Format per entry: id, date, section, what changes, hypothesis (direction, size, 
 - Hypothesis: right.
 - Conclusion: the audit uses both stages. Final result: 114 confirmed pairs in 90 groups, 102 files quarantined, 0 confirmed duplicates left.
 
+## S1-E3: Colab environment check (2026-11-24)
+
+- Change: none, this is an environment check (`colab/run_section.ipynb`, SECTION = 1).
+- Hypothesis: Colab's preinstalled TensorFlow and Keras export to ONNX with `tf2onnx.convert.from_keras`, and a T4 GPU is visible.
+- Result: Python 3.13.18, TensorFlow 2.21.0, Keras 3.13.2, tf2onnx 1.17.0, onnx 1.23.2, onnxruntime 1.32.0. `.h5` save passed. `from_keras` round trip passed (max abs difference 4.5e-08). No GPU was visible: the preinstalled torch builds are `+cpu`, so the session was a CPU runtime.
+- Hypothesis: right on export, wrong on GPU (runtime setting, not a software problem).
+- Conclusion: pin requirements to these versions. Confirm the GPU before the first training run in Section 3. `check_env` now warns when no GPU is visible.
+
+## S2-E1: How much information survives at 96, 128 and 160 pixels? (2026-11-24)
+
+- Change: input size 96, 128, 160 against a 224 reference. No model, only image features.
+- Hypothesis: color statistics (brightness, saturation, blue-to-red ratio) are almost size independent (correlation with 224 above 0.99 at every size). Fine detail is not: reconstruction error grows clearly at 96, and rainy loses the most because rain streaks and splashes are thin. The sharpness gap between rainy and the rest (a possible source-quality shortcut) shrinks at smaller sizes, because downscaling erases the extra detail of the large rainy photos.
+- Result (863 train and valid images, `experiments/eda/size_*.csv`): color features correlate 0.998 to 1.000 with the 224 reference at every size. Sharpness correlates 0.83 (96), 0.90 (128), 0.96 (160). Median reconstruction PSNR at 96 / 128 / 160: rainy 28.7 / 30.8 / 33.1 dB, shiny 31.9 / 34.6 / 37.3, sunrise 34.2 / 37.0 / 39.9, cloudy 36.3 / 39.3 / 42.3. Rainy-vs-rest sharpness AUC: 0.79 (96), 0.83 (128), 0.85 (160), 0.88 (224).
+- Surprise 1: within images of 0.06 MP or less, rainy-vs-cloudy sharpness AUC is still 0.93. The texture gap is not caused by the larger rainy source photos. It is in the content (rain streaks, splashes, busy street scenes).
+- Surprise 2: the share of images whose height is below the target size (so they get upscaled) is 0 to 1.4% at 128 for every class, 12 to 16% for cloudy, shiny and sunrise but 0% for rainy at 160, and 72% for cloudy vs 35% for rainy at 224. Above 128, "upscaled and blurry" starts to mean "not rainy", which is a resolution shortcut the model could learn.
+- Hypothesis: right on color, right on rainy losing the most detail, right on the gap shrinking at smaller sizes. Wrong on the cause: resolution is not what makes rainy sharper.
+- Conclusion: keep 128 px for R0. It is the largest size where almost nothing is upscaled, and it keeps 90% of the sharpness ranking. 160 keeps more rain detail but adds a resolution difference between classes, so if 160 enters the Section 5 grid it must be judged together with the Section 6 downscale-then-upscale test.
+
+## S2-E2: Does any augmentation strength destroy the label? (2026-11-24)
+
+- Change: augmentation strength light, medium, strong, 8 samples of one image per class.
+- Hypothesis: light and medium keep every label. Strong brightness and hue changes make some sunrise images look like cloudy or shiny (a darkened or color-shifted sunset), because sunrise is defined by warm color at the horizon.
+- Result: pending (runs in Colab, TensorFlow is not installed locally).
+
 ## Test set touches
 
 | date | section | what | by |
 |---|---|---|---|
 | 2026-11-22 | 1 | Data audit only: file properties, duplicate detection, quarantine of 31 duplicate test copies. No model was evaluated. | Claude Code |
+| 2026-11-24 | 2 | File counts per class only, for `class_distribution.png`. No image features, no model. | Claude Code |
