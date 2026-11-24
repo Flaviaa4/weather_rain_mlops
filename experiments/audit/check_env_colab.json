@@ -1,0 +1,24 @@
+{
+  "versions": {
+    "python": "3.13.18",
+    "platform": "Linux-6.6.159+-x86_64-with-glibc2.39",
+    "tensorflow": "2.21.0",
+    "keras": "3.13.2",
+    "tf2onnx": "1.17.0",
+    "onnx": "1.23.2",
+    "onnxruntime": "1.32.0",
+    "numpy": "2.4.6",
+    "pandas": "2.2.3",
+    "PIL": "11.3.0",
+    "matplotlib": "3.10.0",
+    "protobuf": "6.33.6"
+  },
+  "gpus": [],
+  "h5_save": true,
+  "onnx_roundtrip": {
+    "method": "from_keras",
+    "max_abs_diff": 4.470348358154297e-08,
+    "passed": true
+  }
+}
+FAILED IMPORTS: none
