@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pytest
-import requests
 
+requests = pytest.importorskip("requests")
 pytest.importorskip("streamlit")
+pytest.importorskip("altair")
 pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 from streamlit.testing.v1 import AppTest

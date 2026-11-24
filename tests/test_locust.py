@@ -4,8 +4,18 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def real_locust_installed():
+    probe = subprocess.run([sys.executable, "-c", "from locust import HttpUser"], cwd=ROOT, capture_output=True)
+    return probe.returncode == 0
+
+
+needs_locust = pytest.mark.skipif(not real_locust_installed(),
+                                  reason="the locust package is not installed, only the repo folder named locust")
 
 
 def load_summarize():
@@ -35,6 +45,7 @@ def test_summary_table_charts_and_breaking_point(tmp_path):
     assert (tmp_path / "latency_vs_replicas.png").stat().st_size > 0 and (tmp_path / "throughput_vs_replicas.png").exists()
 
 
+@needs_locust
 def test_locustfile_loads_samples_and_synthetic_png(tmp_path):
     code = ("import io, sys; sys.path.insert(0, 'locust'); import locustfile; from PIL import Image; "
             "Image.open(io.BytesIO(locustfile.synthetic_png())).verify(); "
