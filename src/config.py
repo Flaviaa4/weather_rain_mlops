@@ -58,8 +58,8 @@ AUGMENT_STRENGTH = os.environ.get("AUGMENT_STRENGTH", "medium")
 AUGMENT_STRENGTHS = {
     "none": None,
     "light": {"flip": True, "zoom": 0.05, "brightness": 0.05, "contrast": 0.10, "saturation": 0.10, "hue": 0.0},
-    "medium": {"flip": True, "zoom": 0.10, "brightness": 0.10, "contrast": 0.20, "saturation": 0.20, "hue": 0.02},
-    "strong": {"flip": True, "zoom": 0.20, "brightness": 0.20, "contrast": 0.35, "saturation": 0.35, "hue": 0.05},
+    "medium": {"flip": True, "zoom": 0.10, "brightness": 0.10, "contrast": 0.20, "saturation": 0.20, "hue": 0.0},
+    "strong": {"flip": True, "zoom": 0.20, "brightness": 0.20, "contrast": 0.35, "saturation": 0.20, "hue": 0.0},
 }
 EDA_SIZES = [96, 128, 160]
 EDA_REFERENCE_SIZE = env_int("EDA_REFERENCE_SIZE", 224)

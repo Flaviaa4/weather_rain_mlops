@@ -40,7 +40,10 @@ Format per entry: id, date, section, what changes, hypothesis (direction, size, 
 
 - Change: augmentation strength light, medium, strong, 8 samples of one image per class.
 - Hypothesis: light and medium keep every label. Strong brightness and hue changes make some sunrise images look like cloudy or shiny (a darkened or color-shifted sunset), because sunrise is defined by warm color at the horizon.
-- Result: pending (runs in Colab, TensorFlow is not installed locally).
+- Run: Colab CPU runtime, 2026-11-24, `experiments/colab_section2.log`. Previews `experiments/figures/augmentation_preview_{light,medium,strong}.png`, 6 rows (one random train image per class, the least saturated sunrise, the brightest cloudy), 8 augmented copies each, seed 11. Parameters at preview time: light hue 0, medium hue 0.02 and saturation 0.2, strong hue 0.05 and saturation 0.35.
+- Result (reviewed by the user and by Claude Code): light and medium keep every label. Strong does not: sunrise copies turn washed-out pink-gray (saturation 0.35) or nearly black (brightness 0.2 with contrast 0.35), the brightest cloudy image goes almost white and loses cloud detail, and the shiny sea gets a teal cast from the hue shift.
+- Hypothesis: right that light and medium are safe and that strong breaks sunrise. Partly wrong on the cause: saturation and brightness do more damage than hue, and hue also hurts shiny.
+- Conclusion (user decision): medium is the R0 default. Hue is 0 at every level. Strong stays only as an experiment arm, with saturation capped at 0.2. These changes only make augmentation milder, so the medium review still holds. The new strong setting has not been previewed: rerun the previews before strong is used in a grid.
 
 ## Test set touches
 

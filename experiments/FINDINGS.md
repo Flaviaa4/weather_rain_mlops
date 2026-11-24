@@ -96,7 +96,7 @@ The splits are not stratified (chi-square 21.7 before cleaning, p about 0.001; 1
 - Training loads each split into memory with that same function (`load_split`). `build_dataset` only adds shuffling, augmentation and batching with `tf.data`. So training and inference preprocessing are identical by construction, and two tests prove it: `test_training_loader_equals_inference_path` (local) and `test_eval_dataset_equals_inference_path` (TensorFlow, Colab).
 - The module does not import TensorFlow (a test checks this in a fresh interpreter). TensorFlow is imported inside the augmentation and dataset functions only.
 - Augmentation lives in `tf.data` (stateless random ops, seeds from `Dataset.random(seed, rerandomize_each_iteration=True)`), so the exported model stays a plain inference graph and each epoch gets new augmentations. Strengths in `config.AUGMENT_STRENGTHS`: flip, zoom crop, brightness, contrast, saturation, hue. Light has no hue shift.
-- Tests: 24 local tests pass. The 6 TensorFlow tests in `tests/test_preprocessing_tf.py` run in Colab (pending).
+- Tests: 24 local tests pass. In Colab (TensorFlow 2.21.0, CPU runtime) all 22 preprocessing tests pass, including the 6 TensorFlow tests: the eval dataset equals the inference path exactly, training without augmentation only reorders, augmentation is seeded and stays in [0, 1], and each epoch gets new augmentations (`experiments/colab_section2.log`).
 
 ### Figures (`experiments/figures/`)
 
@@ -120,9 +120,15 @@ Brightness is also informative (shiny brightest at 0.56, sunrise darkest at 0.38
 
 ### Augmentation preview (S2-E2)
 
-Pending: runs in Colab and comes back as `experiments/figures/augmentation_preview_{light,medium,strong}.png`. Rows: one random train image per class, plus the least saturated sunrise and the brightest cloudy (the images most likely to change label).
+- Previews: `experiments/figures/augmentation_preview_{light,medium,strong}.png`. Rows: one random train image per class, plus the least saturated sunrise and the brightest cloudy (the images most likely to change label).
+- Light and medium keep every label. Strong (saturation 0.35, hue 0.05, brightness 0.2) does not: sunrise turns washed-out pink-gray or nearly black, the brightest cloudy goes almost white, shiny gets a teal cast.
+- Decision (user): medium is the R0 default. Hue is 0 at every level. Strong is only an experiment arm, with saturation capped at 0.2. Final settings in `config.AUGMENT_STRENGTHS`: medium = flip, zoom 0.1, brightness 0.1, contrast 0.2, saturation 0.2. The capped strong setting has not been previewed yet.
 
 ### Open questions
 
-5. Is medium augmentation (hue 0.02, brightness 0.1) safe for sunrise? Answered by the S2-E2 previews.
+5. Closed: medium is safe for every class, see S2-E2. Still open: preview the capped strong setting before it is used in a grid.
 6. Rainy images are partly street scenes: how much of the rainy class is "people with umbrellas" rather than weather? Section 4 gallery.
+
+### Section 2 gate
+
+Closed 2026-11-24. Preprocessing tests pass locally and in Colab, including the training-vs-inference equality tests. Plots are in `experiments/figures/`. Three feature interpretations are above. R0 inputs are fixed: 128 px, medium augmentation without hue.
