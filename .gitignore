@@ -27,3 +27,4 @@ data/test/
 data/quarantine/
 data/data.zip
 !experiments/colab_section*.log
+experiments/runs/
