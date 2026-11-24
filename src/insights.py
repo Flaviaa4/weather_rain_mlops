@@ -5,6 +5,7 @@ import pandas as pd
 from PIL import Image
 
 from src import config
+from src.metrics import rank_auc
 from src.preprocessing import list_labeled_files, preprocess_image_file
 
 LUMA_WEIGHTS = np.array([0.299, 0.587, 0.114], dtype=np.float32)
@@ -91,12 +92,6 @@ def extract_features(data_dir=config.DATA_DIR, splits=config.SPLITS, size=config
 
 def summarize_by_class(frame, features=FEATURES):
     return frame.groupby("class")[features].agg(["median", "mean", "std"]).round(4)
-
-
-def rank_auc(scores, is_positive):
-    ranks = pd.Series(scores).rank().to_numpy()
-    positives, negatives = int(is_positive.sum()), int((~is_positive).sum())
-    return float((ranks[is_positive].sum() - positives * (positives + 1) / 2) / (positives * negatives))
 
 
 def one_vs_rest_auc(frame, feature):

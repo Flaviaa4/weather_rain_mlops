@@ -45,6 +45,34 @@ Format per entry: id, date, section, what changes, hypothesis (direction, size, 
 - Hypothesis: right that light and medium are safe and that strong breaks sunrise. Partly wrong on the cause: saturation and brightness do more damage than hue, and hue also hurts shiny.
 - Conclusion (user decision): medium is the R0 default. Hue is 0 at every level. Strong stays only as an experiment arm, with saturation capped at 0.2. These changes only make augmentation milder, so the medium review still holds. The new strong setting has not been previewed: rerun the previews before strong is used in a grid.
 
+## Section 3 reference numbers (2026-11-24, local, labels only)
+
+Validation set, `experiments/sanity/reference_baselines.json`. Majority class (always sunrise): accuracy 0.299, macro F1 0.115, rainy F1 0. Random guess with the train class prior (1000 draws): accuracy 0.260 +- 0.036, macro F1 0.243 +- 0.035, rainy F1 0.160 +- 0.068. Uniform random: accuracy 0.248, macro F1 0.240 +- 0.035.
+
+## S3-E1: Can the pipeline overfit one batch? (2026-11-24)
+
+- Change: R0 architecture without augmentation, dropout, L2 and class weights, trained for 300 steps on one stratified batch of 32 train images (8 per class, seed 11).
+- Hypothesis: train accuracy reaches 100% within about 50 steps, and accuracy in inference mode (batch norm moving statistics) on the same batch is at least 97% after 300 steps. If not, the labels, preprocessing or batch norm handling has a bug.
+- Result: pending (Colab, group A).
+
+## S3-E2: Does a shuffled-label run stay at chance? (2026-11-24)
+
+- Change: R0 with train labels randomly permuted (seed 11). Validation labels stay true. Full protocol (max 150 epochs, early stopping patience 15).
+- Hypothesis: validation macro F1 stays inside the random-guess range (0.24 +- 0.07) and accuracy at or below about 0.33. Validation loss never improves much, so early stopping fires around epoch 16 to 25. A clearly higher score would mean leakage between train labels and validation.
+- Result: pending (Colab, group A).
+
+## S3-E3: Vanilla CNN baseline, 5 seeds (2026-11-24)
+
+- Change: reference point, no change. Two conv-pool layers (32, 64 filters), flatten, dense 128, no batch norm, dropout, L2, augmentation or class weights. Same training protocol as R0 (Adam 1e-3, early stopping, ReduceLROnPlateau). About 8.4M parameters, almost all in the dense layer after flatten.
+- Hypothesis: it overfits fast. Clean train accuracy close to 100%, best epoch early (about 5 to 15), validation macro F1 about 0.80 +- 0.03. Rainy has the lowest F1 (about 0.70) because rainy vs cloudy is the hardest pair (Section 2: only sharpness separates them) and rainy has only 20 validation images.
+- Result: pending (Colab, group B).
+
+## S3-E4: R0 against the vanilla CNN, 5 seeds (2026-11-24)
+
+- Change: R0 vs S3-E3, all optimizations together: 3 blocks of two convs (32, 64, 128 filters), batch norm, dropout 0.3, L2 1e-4, global average pooling, class weights, medium augmentation. About 0.3M parameters.
+- Hypothesis: R0 is better by 0.05 to 0.10 macro F1 (about 0.87 to 0.90), with a lower std across seeds, a later best epoch (about 40 to 80) and a smaller gap between clean train and validation accuracy. Rainy F1 gains the most, from class weights and augmentation. This is a bundle, so it says how much the optimizations buy together, not which one matters. Section 5 ablations separate them.
+- Result: pending (Colab, group C).
+
 ## Test set touches
 
 | date | section | what | by |
