@@ -1,0 +1,14 @@
+FROM python:3.13.7-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TF_CPP_MIN_LOG_LEVEL=2 CUDA_VISIBLE_DEVICES=-1
+WORKDIR /app
+
+COPY requirements-trainer.txt .
+RUN pip install -r requirements-trainer.txt
+
+COPY src/ src/
+COPY app/__init__.py app/trainer_api.py app/
+
+EXPOSE 8001
+CMD ["uvicorn", "app.trainer_api:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]

@@ -26,6 +26,7 @@ RUN_OVERHEAD_SECONDS = 20
 COLAB_UNITS_PER_HOUR = float(os.environ.get("COLAB_UNITS_PER_HOUR", "1.96"))
 UNIT_BUDGET = 0.6 * float(os.environ.get("COLAB_UNITS_REMAINING", "74"))
 DATA_CACHE = {}
+DIAG_SECTIONS = {3}
 
 
 def config_hash(cfg):
@@ -256,18 +257,24 @@ def run_grid(configs, seeds, ctx):
     return len(todo)
 
 
-def stratified_batch(images, labels, per_class, seed):
+def stratified_indices(labels, per_class, seed):
     rng = np.random.default_rng(seed)
-    keep = np.concatenate([rng.choice(np.flatnonzero(labels == k), per_class, replace=False) for k in np.unique(labels)])
+    return np.concatenate([rng.choice(np.flatnonzero(labels == k), per_class, replace=False) for k in np.unique(labels)])
+
+
+def stratified_batch(images, labels, per_class, seed):
+    keep = stratified_indices(labels, per_class, seed)
     return images[keep], labels[keep]
 
 
-def overfit_result(history, evaluation, steps):
+def overfit_result(history, raw, refreshed, steps):
     accuracy = history.history["accuracy"]
     first = next((i + 1 for i, value in enumerate(accuracy) if value >= 1.0), None)
     return {"steps": steps, "first_step_at_100pct_train_accuracy": first, "final_train_loss": history.history["loss"][-1],
-            "final_train_accuracy": accuracy[-1], "inference_mode_accuracy": evaluation["accuracy"],
-            "inference_mode_loss": evaluation["loss"], "passed": evaluation["accuracy"] >= OVERFIT_PASS_ACCURACY}
+            "final_train_accuracy": accuracy[-1], "inference_mode_accuracy_stale_bn": raw["accuracy"],
+            "inference_mode_loss_stale_bn": raw["loss"], "inference_mode_accuracy": refreshed["accuracy"],
+            "inference_mode_loss": refreshed["loss"], "bn_statistics": "refreshed on the batch before the inference test",
+            "passed": accuracy[-1] >= OVERFIT_PASS_ACCURACY and refreshed["accuracy"] >= OVERFIT_PASS_ACCURACY}
 
 
 def run_overfit_check(ctx, seed=config.SEEDS[0], steps=OVERFIT_STEPS):
@@ -280,7 +287,9 @@ def run_overfit_check(ctx, seed=config.SEEDS[0], steps=OVERFIT_STEPS):
     targets = metrics.one_hot(labels, len(config.CLASS_NAMES))
     model = model_lib.compile_model(model_lib.build_model(grids.OVERFIT_CHECK), grids.OVERFIT_CHECK)
     history = model.fit(images, targets, batch_size=len(images), epochs=steps, shuffle=False, verbose=0)
-    result = overfit_result(history, model.evaluate(images, targets, verbose=0, return_dict=True), steps)
+    raw = model.evaluate(images, targets, verbose=0, return_dict=True)
+    model_lib.refresh_batch_norm_statistics(model, images)
+    result = overfit_result(history, raw, model.evaluate(images, targets, verbose=0, return_dict=True), steps)
     run_report.save_json({**result, "config": grids.OVERFIT_CHECK, "seed": seed}, path)
     LOGGER.info("Overfit one batch: %s", result)
     if not result["passed"] and not ctx["smoke"]:
@@ -347,7 +356,8 @@ def run_smoke(ctx):
     if pending_runs(configs, [config.SEEDS[0]], smoke_ctx):
         raise RuntimeError("resume check failed: finished smoke runs are not skipped")
     run_overfit_check(smoke_ctx, steps=20)
-    LOGGER.info("Smoke test passed: runs, artifacts, results.csv, resume skip and overfit check all work")
+    run_diag(smoke_ctx, steps=3)
+    LOGGER.info("Smoke test passed: runs, artifacts, results.csv, resume skip, overfit check and diag all work")
 
 
 def require_gpu():
@@ -362,14 +372,22 @@ def run_group(section, group, ctx):
     require_gpu()
     if group == "timing":
         return run_timing(ctx)
+    if group == "diag":
+        return run_diag(ctx)
     spec = grids.section_groups(section)[group]
     if spec.get("overfit_check"):
         run_overfit_check(ctx)
     return run_grid(spec["configs"], spec["seeds"], ctx)
 
 
+def run_diag(ctx, **kwargs):
+    from src.diagnostics import run_batch_diagnostics
+    return run_batch_diagnostics(ctx, **kwargs)
+
+
 def group_order(section):
-    return ["smoke", "timing"] + list(grids.section_groups(section))
+    diag = ["diag"] if section in DIAG_SECTIONS else []
+    return ["smoke", "timing"] + diag + list(grids.section_groups(section))
 
 
 def next_group_message(section, last_group):

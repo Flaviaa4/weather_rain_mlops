@@ -117,6 +117,25 @@ def get_callbacks(cfg, history_path, backup_dir=None):
     return callbacks
 
 
+def batch_norm_layers(model):
+    return [layer for layer in model.layers if isinstance(layer, layers.BatchNormalization)]
+
+
+def set_batch_norm_momentum(model, momentum):
+    for layer in batch_norm_layers(model):
+        layer.momentum = momentum
+    return model
+
+
+def refresh_batch_norm_statistics(model, images):
+    momenta = [layer.momentum for layer in batch_norm_layers(model)]
+    set_batch_norm_momentum(model, 0.0)
+    model(images, training=True)
+    for layer, momentum in zip(batch_norm_layers(model), momenta):
+        layer.momentum = momentum
+    return len(momenta)
+
+
 def compute_class_weights(labels, n_classes=len(config.CLASS_NAMES)):
     counts = np.bincount(labels, minlength=n_classes)
     return {k: float(len(labels) / (n_classes * counts[k])) for k in range(n_classes) if counts[k] > 0}

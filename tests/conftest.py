@@ -1,3 +1,5 @@
+import io
+
 import numpy as np
 import pytest
 from PIL import Image
@@ -34,3 +36,41 @@ def tiny_dataset(tmp_path):
 @pytest.fixture
 def gradient_image():
     return gradient()
+
+
+def jpeg_bytes(seed=0, size=(96, 64)):
+    rng = np.random.default_rng(seed)
+    buffer = io.BytesIO()
+    Image.fromarray(rng.integers(0, 255, (size[1], size[0], 3), dtype=np.uint8)).save(buffer, format="JPEG", quality=90)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def make_jpeg():
+    return jpeg_bytes
+
+
+def point_config_at(monkeypatch, data_dir, models_dir):
+    paths = {"DATA_DIR": data_dir, "UPLOADS_DIR": data_dir / "uploads", "DB_PATH": data_dir / "weather.db",
+             "MODELS_DIR": models_dir, "ONNX_PATH": models_dir / "placeholder_model.onnx",
+             "H5_PATH": models_dir / "placeholder_model.h5", "METRICS_PATH": models_dir / "placeholder_model_metrics.json",
+             "CLASS_NAMES_PATH": models_dir / "class_names.json", "ARCHIVE_DIR": models_dir / "archive",
+             "CANDIDATE_DIR": models_dir / "candidate", "INSIGHTS_CACHE": data_dir / "cache" / "features.csv",
+             "EDA_FEATURES_CSV": data_dir / "no_eda_features.csv"}
+    for name, value in paths.items():
+        monkeypatch.setattr(config, name, value)
+    monkeypatch.setattr(config, "MIN_FREE_DISK_MB", 0)
+    monkeypatch.setattr(config, "RETRAIN_AUTO", False)
+    monkeypatch.setenv("BOOTSTRAP_PLACEHOLDER", "0")
+    return paths
+
+
+@pytest.fixture
+def service_env(tiny_dataset, tmp_path, monkeypatch):
+    from src import database, placeholder, prediction
+    paths = point_config_at(monkeypatch, tiny_dataset, tmp_path / "models")
+    placeholder.save_placeholder_onnx(paths["ONNX_PATH"])
+    database.init_db()
+    prediction.SESSION_CACHE.clear()
+    yield paths
+    prediction.SESSION_CACHE.clear()

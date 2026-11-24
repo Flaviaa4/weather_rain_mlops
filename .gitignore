@@ -30,3 +30,8 @@ data/data.zip
 !experiments/colab_section*.log
 !experiments/kaggle_section*.log
 experiments/runs/
+models/placeholder_model*
+models/candidate/
+data/cache/
+data/*.db-journal
+locust/results/*.html

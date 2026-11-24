@@ -1,0 +1,17 @@
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+data
+models
+experiments
+locust
+notebook
+colab
+kaggle
+tests
+*.zip
+CLAUDE.md
+CLAUDE_CODE_PLAYBOOK.md

@@ -71,8 +71,22 @@ MAX_UPLOAD_MB = env_int("MAX_UPLOAD_MB", 10)
 MIN_FREE_DISK_MB = env_int("MIN_FREE_DISK_MB", 500)
 ONNX_THREADS = env_int("ONNX_THREADS", 1)
 
-H5_PATH = MODELS_DIR / "weather_cnn.h5"
-ONNX_PATH = MODELS_DIR / "weather_cnn.onnx"
+MODEL_NAME = os.environ.get("MODEL_NAME", "placeholder_model")
+IS_PLACEHOLDER = MODEL_NAME.startswith("placeholder")
+H5_PATH = MODELS_DIR / f"{MODEL_NAME}.h5"
+ONNX_PATH = MODELS_DIR / f"{MODEL_NAME}.onnx"
+METRICS_PATH = MODELS_DIR / (f"{MODEL_NAME}_metrics.json" if IS_PLACEHOLDER else "metrics.json")
 CLASS_NAMES_PATH = MODELS_DIR / "class_names.json"
-METRICS_PATH = MODELS_DIR / "metrics.json"
 ARCHIVE_DIR = MODELS_DIR / "archive"
+CANDIDATE_DIR = MODELS_DIR / "candidate"
+
+MAX_ZIP_MB = env_int("MAX_ZIP_MB", 200)
+MAX_FILES_PER_UPLOAD = env_int("MAX_FILES_PER_UPLOAD", 500)
+RETRAIN_AUTO = os.environ.get("RETRAIN_AUTO", "1") == "1"
+RETRAIN_LEARNING_RATE = env_float("RETRAIN_LEARNING_RATE", 1e-4)
+RETRAIN_MAX_EPOCHS = env_int("RETRAIN_MAX_EPOCHS", 10)
+RETRAIN_PATIENCE = env_int("RETRAIN_PATIENCE", 3)
+RETRAIN_SEED = env_int("RETRAIN_SEED", 11)
+PROMOTION_TOLERANCE = env_float("PROMOTION_TOLERANCE", 0.0)
+EDA_FEATURES_CSV = EXPERIMENTS_DIR / "eda" / "features_train_valid.csv"
+INSIGHTS_CACHE = env_path("INSIGHTS_CACHE", DATA_DIR / "cache" / "features_train_valid.csv")

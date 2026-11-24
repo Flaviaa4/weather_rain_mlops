@@ -59,3 +59,23 @@ def test_run_one_end_to_end(tiny_dataset, tmp_path):
     assert row["epochs_run"] == experiments.SMOKE_EPOCHS and "val_f1_rainy" in row
     assert json.loads((run_dir / "config.json").read_text())["config"]["max_epochs"] == experiments.SMOKE_EPOCHS
     assert experiments.pending_runs([small(grids.R0)], [11], ctx) == []
+
+
+def test_refresh_batch_norm_makes_inference_match_training_mode():
+    cfg = small(grids.R0, dropout=0.0)
+    built = model.build_model(cfg)
+    images = np.random.default_rng(1).random((8, 32, 32, 3), dtype=np.float32)
+    assert model.refresh_batch_norm_statistics(built, images) == 6
+    training_mode = built(images, training=True).numpy()
+    assert np.allclose(built(images, training=False).numpy(), training_mode, atol=1e-4)
+    assert all(layer.momentum == 0.99 for layer in model.batch_norm_layers(built))
+
+
+def test_diag_runs_and_pipeline_is_identical(tiny_dataset, tmp_path):
+    from src import diagnostics
+    ctx = {"section": 3, "data_dir": tiny_dataset, "dir": tmp_path, "smoke": True}
+    result = diagnostics.run_batch_diagnostics(ctx, steps=2, per_class=3)
+    assert result["pipeline"]["passed"], result["pipeline"]
+    assert len(result["variants"]) == 6 and result["cause"] in {"a", "b", "c", "not_reproduced"}
+    assert all(diagnostics.paths_agree(row) for row in result["variants"])
+    assert (tmp_path / "sanity" / "diag_overfit_one_batch.json").exists()

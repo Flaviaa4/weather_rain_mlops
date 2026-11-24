@@ -149,3 +149,58 @@ def describe_feature(frame, feature):
 
 def write_interpretations(frame, features=FEATURES):
     return {feature: describe_feature(frame, feature) for feature in features}
+
+
+INSIGHT_SPLITS = ["train", "valid"]
+INSIGHT_FEATURES = ["saturation", "blue_red_ratio", "sharpness", "brightness"]
+INSIGHT_STORIES = {
+    "class_balance": (
+        "Sunrise is the largest class and rainy the smallest in train, and rainy has only 20 validation images. "
+        "The imbalance is moderate (about 1.8 to 1), so training keeps every image and uses class weights. "
+        "Rainy is the class this project cares most about and the one with the fewest validation images, so its "
+        "scores move the most between runs, and new rainy uploads add the most value."),
+    "saturation": (
+        "Color separates the sunny classes from the gray ones: sunrise and shiny images are saturated, cloudy and "
+        "rainy images are close to gray, and almost half of the rainy images are nearly colorless. This is real "
+        "weather signal, but it is also a shortcut risk: a gray-toned or black-and-white sunny photo will likely be "
+        "read as cloudy or rainy, and saturation barely tells rainy from cloudy."),
+    "blue_red_ratio": (
+        "The shiny vs sunrise boundary is almost pure color: shiny is a blue sky (blue-to-red ratio above 1.5), "
+        "sunrise a warm horizon (about 0.5). This is why hue augmentation is switched off. A blue-toned sunrise "
+        "is a likely mistake for the model."),
+    "sharpness": (
+        "Sharpness (Laplacian variance) is the only simple feature that separates rainy from cloudy. Rain streaks, "
+        "splashes and wet streets carry fine texture, cloud fields are smooth. The separation holds among small "
+        "images too, so it is content, not file resolution. Risk: a busy dry street may look rainy, and a sky photo "
+        "during light rain may look cloudy."),
+}
+
+
+def load_feature_table(eda_csv=None, cache_csv=None, data_dir=None):
+    for path in [Path(eda_csv or config.EDA_FEATURES_CSV), Path(cache_csv or config.INSIGHTS_CACHE)]:
+        if path.exists():
+            return pd.read_csv(path)
+    frame = extract_features(data_dir or config.DATA_DIR, INSIGHT_SPLITS)
+    Path(cache_csv or config.INSIGHTS_CACHE).parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(cache_csv or config.INSIGHTS_CACHE, index=False)
+    return frame
+
+
+def class_counts(data_dir=None, splits=INSIGHT_SPLITS):
+    data_dir = Path(data_dir or config.DATA_DIR)
+    counts = {split: {name: 0 for name in config.CLASS_NAMES} for split in splits}
+    for split in splits:
+        for _, label in list_labeled_files(data_dir / split):
+            counts[split][config.CLASS_NAMES[label]] += 1
+    return counts
+
+
+def feature_records(frame, features=INSIGHT_FEATURES):
+    return frame[["split", "class", *features]].round(5).to_dict(orient="records")
+
+
+def insight_payload(upload_counts=None, data_dir=None):
+    frame = load_feature_table(data_dir=data_dir)
+    return {"splits": INSIGHT_SPLITS, "class_names": config.CLASS_NAMES, "class_counts": class_counts(data_dir),
+            "upload_counts": upload_counts or {}, "features": feature_records(frame),
+            "interpretations": write_interpretations(frame, INSIGHT_FEATURES), "stories": INSIGHT_STORIES}

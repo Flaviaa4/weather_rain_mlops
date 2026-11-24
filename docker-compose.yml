@@ -1,0 +1,78 @@
+name: weather_rain_mlops
+
+x-model-env: &model-env
+  MODEL_NAME: ${MODEL_NAME:-placeholder_model}
+  DATA_DIR: /app/data
+  MODELS_DIR: /app/models
+  EXPERIMENTS_DIR: /app/experiments
+
+services:
+  nginx:
+    image: nginx:1.27.5-alpine
+    ports:
+      - "${PUBLIC_PORT:-80}:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - trainer
+      - ui
+    restart: always
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      <<: *model-env
+      ONNX_THREADS: "1"
+    volumes:
+      - ./models:/app/models:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPUS:-1.0}"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    restart: always
+
+  trainer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.trainer
+    environment:
+      <<: *model-env
+      ROOT_PATH: /trainer
+      RETRAIN_AUTO: ${RETRAIN_AUTO:-1}
+      RETRAIN_UPLOAD_THRESHOLD: ${RETRAIN_UPLOAD_THRESHOLD:-40}
+      RETRAIN_MAX_EPOCHS: ${RETRAIN_MAX_EPOCHS:-10}
+      MIN_FREE_DISK_MB: ${MIN_FREE_DISK_MB:-500}
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./experiments:/app/experiments:ro
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+    restart: always
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    environment:
+      API_URL: http://nginx
+      TRAINER_URL: http://nginx/trainer
+    restart: always

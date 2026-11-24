@@ -97,7 +97,9 @@ def test_estimates_and_next_group():
     spec = {"configs": [grids.R0, grids.BASELINE], "seeds": [11, 22]}
     minutes = experiments.group_minutes(spec, {"cnn": 2.0, "baseline": 1.0}, 60)
     assert minutes == pytest.approx(2 * (120 + 20) / 60 + 2 * (60 + 20) / 60)
-    assert experiments.next_group_message(3, "timing").endswith("--group A")
+    assert experiments.next_group_message(3, "timing").endswith("--group diag")
+    assert experiments.next_group_message(3, "diag").endswith("--group A")
+    assert experiments.group_order(3) == ["smoke", "timing", "diag", "A", "B", "C"]
     assert experiments.next_group_message(3, "C") == "Section 3 grid complete."
 
 
