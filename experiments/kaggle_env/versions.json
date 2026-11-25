@@ -1,0 +1,12 @@
+{
+  "python": "3.13.16",
+  "tensorflow": "2.21.0",
+  "keras": "3.13.2",
+  "tf2onnx": "1.17.0",
+  "onnx": "1.23.2",
+  "onnxruntime": "1.32.0",
+  "numpy": "2.4.6",
+  "gpus": [
+    "/physical_device:GPU:0"
+  ]
+}

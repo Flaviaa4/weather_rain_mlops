@@ -15,7 +15,7 @@ def conv_unit(x, filters, cfg):
     x = layers.Conv2D(filters, 3, padding="same", use_bias=not cfg["batch_norm"],
                       kernel_regularizer=kernel_regularizer(cfg["l2"]))(x)
     if cfg["batch_norm"]:
-        x = layers.BatchNormalization()(x)
+        x = layers.BatchNormalization(momentum=config.config_setting(cfg, "bn_momentum"))(x)
     return layers.Activation("relu")(x)
 
 
@@ -51,16 +51,9 @@ def build_cnn(cfg, n_classes=len(config.CLASS_NAMES)):
     return keras.Model(inputs, classifier_head(x, cfg, n_classes), name=cfg["name"])
 
 
-def build_baseline_cnn(cfg, n_classes=len(config.CLASS_NAMES)):
-    inputs = model_input(cfg)
-    x = layers.MaxPooling2D()(layers.Conv2D(cfg["base_filters"], 3, padding="same", activation="relu")(inputs))
-    x = layers.MaxPooling2D()(layers.Conv2D(cfg["base_filters"] * 2, 3, padding="same", activation="relu")(x))
-    x = layers.Dense(cfg["dense_units"], activation="relu")(layers.Flatten()(x))
-    return keras.Model(inputs, layers.Dense(n_classes, activation="softmax", name="probabilities")(x), name=cfg["name"])
-
-
+# the baseline settings (2 blocks of 1 conv, flatten, no extras) give the same network as the Section 3 baseline
 def build_model(cfg):
-    return build_baseline_cnn(cfg) if cfg["architecture"] == "baseline" else build_cnn(cfg)
+    return build_cnn(cfg)
 
 
 def build_optimizer(cfg):
@@ -93,28 +86,67 @@ class EpochLogger(keras.callbacks.Callback):
 
 
 class RestoreBestWeights(keras.callbacks.Callback):
+    def __init__(self, start_epoch=0):
+        super().__init__()
+        self.start_epoch = start_epoch
+
     def on_train_begin(self, logs=None):
-        self.best_loss, self.best_weights = np.inf, None
+        self.best_loss, self.best_weights = {"all": np.inf, "after_start": np.inf}, {}
+
+    def remember(self, key, loss):
+        if loss < self.best_loss[key]:
+            self.best_loss[key], self.best_weights[key] = loss, self.model.get_weights()
 
     def on_epoch_end(self, epoch, logs=None):
-        if logs["val_loss"] < self.best_loss:
-            self.best_loss, self.best_weights = logs["val_loss"], self.model.get_weights()
+        self.remember("all", logs["val_loss"])
+        if epoch >= self.start_epoch:
+            self.remember("after_start", logs["val_loss"])
 
     def on_train_end(self, logs=None):
-        if self.best_weights is not None:
-            self.model.set_weights(self.best_weights)
+        weights = self.best_weights.get("after_start", self.best_weights.get("all"))
+        if weights is not None:
+            self.model.set_weights(weights)
 
 
-def get_callbacks(cfg, history_path, backup_dir=None):
-    callbacks = [RestoreBestWeights(),
-                 keras.callbacks.EarlyStopping(monitor="val_loss", patience=cfg["early_stop_patience"])]
+class LearningRateWarmup(keras.callbacks.Callback):
+    def __init__(self, target_rate, epochs):
+        super().__init__()
+        self.target_rate, self.epochs = target_rate, epochs
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch < self.epochs:
+            self.model.optimizer.learning_rate = self.target_rate * (epoch + 1) / self.epochs
+
+
+def stopping_callbacks(cfg):
+    start = config.config_setting(cfg, "min_epochs")
+    return [RestoreBestWeights(start),
+            keras.callbacks.EarlyStopping(monitor="val_loss", patience=cfg["early_stop_patience"], start_from_epoch=start)]
+
+
+def schedule_callbacks(cfg):
+    callbacks = []
+    if config.config_setting(cfg, "warmup_epochs") > 0:
+        callbacks.append(LearningRateWarmup(cfg["learning_rate"], config.config_setting(cfg, "warmup_epochs")))
     if cfg["lr_schedule"]:
         callbacks.append(keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=config.LR_FACTOR,
                                                            patience=config.LR_PATIENCE, min_lr=config.MIN_LR))
+    return callbacks
+
+
+def get_callbacks(cfg, history_path, backup_dir=None):
+    callbacks = stopping_callbacks(cfg) + schedule_callbacks(cfg)
     if backup_dir is not None:
         callbacks.append(keras.callbacks.BackupAndRestore(str(backup_dir)))
     callbacks += [EpochLogger(), keras.callbacks.CSVLogger(str(history_path), append=backup_dir is not None)]
     return callbacks
+
+
+def save_without_optimizer(model, path):
+    clone = keras.models.clone_model(model)
+    clone.set_weights(model.get_weights())
+    clone.save(path)
+    return path
 
 
 def batch_norm_layers(model):

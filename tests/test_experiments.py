@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src import experiments, grids, metrics, run_report
+from src import config, experiments, grids, metrics, run_report
 
 
 def fake_history(epochs=6, best=3):
@@ -119,3 +119,66 @@ def test_reference_baselines_file(tiny_dataset, tmp_path):
     path = experiments.run_reference_baselines(tiny_dataset, tmp_path)
     result = json.loads(path.read_text())
     assert {"majority", "random_train_prior", "random_uniform"} <= set(result)
+
+
+def changed_keys(cfg, base):
+    return {key for key in set(cfg) | set(base) if key != "name" and cfg.get(key) != base.get(key)}
+
+
+def test_section5_arms_change_one_factor_from_their_reference():
+    groups = grids.section_groups(5)
+    assert list(groups) == ["A", "B", "C", "D"] and experiments.group_order(5) == ["smoke", "timing", "A", "B", "C", "D"]
+    r0_arms = groups["A"]["configs"] + groups["B"]["configs"] + groups["D"]["configs"]
+    assert [changed_keys(cfg, grids.R0) for cfg in r0_arms] == [
+        {"bn_momentum"}, {"bn_momentum"}, {"early_stop_patience", "min_epochs"}, {"learning_rate"},
+        {"warmup_epochs"}, {"augment"}]
+    ablation = groups["C"]["configs"]
+    assert [changed_keys(cfg, grids.BASELINE) for cfg in ablation] == [
+        {"batch_norm"}, {"dropout"}, {"l2"}, {"class_weights"}, {"augment"}, {"pooling"}]
+    assert all(cfg[key] == grids.R0[key] for cfg in ablation for key in changed_keys(cfg, grids.BASELINE))
+    names = [cfg["name"] for spec in groups.values() for cfg in spec["configs"]]
+    assert len(names) == len(set(names)) and groups["C"]["seeds"] == [11, 22, 33]
+
+
+def test_optional_keys_keep_section3_hashes():
+    assert set(config.OPTIONAL_CONFIG_DEFAULTS).isdisjoint(grids.R0)
+    assert config.config_setting(grids.R0, "bn_momentum") == 0.99 and config.config_setting(grids.R0, "min_epochs") == 0
+    assert grids.variant(grids.R0, "m", bn_momentum=0.9)["bn_momentum"] == 0.9
+    assert all(cfg["name"].startswith("smoke") for cfg in grids.smoke_configs(5))
+    assert [cfg["name"] for cfg in grids.smoke_configs(3)] == ["baseline", "r0", "r0_shuffled_labels"]
+
+
+def test_best_epoch_respects_min_epochs():
+    history = fake_history(epochs=8, best=1)
+    assert run_report.best_epoch_index(history) == 1 and run_report.best_epoch_index(history, 4) == 4
+    assert run_report.best_epoch_index(history, 20) == 1
+    assert experiments.history_fields(history, {**grids.R0, "min_epochs": 4})["best_epoch"] == 5
+
+
+def result_row(section, cfg, seed, f1, loss=0.5):
+    return {"run_id": experiments.make_run_id(section, cfg, seed), "section": section, "seed": seed,
+            "config_hash": experiments.config_hash(cfg), "val_macro_f1": f1, "val_loss": loss}
+
+
+def test_prune_models_keeps_only_best_seed_of_the_config(tmp_path):
+    other = grids.variant(grids.R0, "other", learning_rate=3e-4)
+    planned = [(5, grids.R0, 11, 0.80), (5, grids.R0, 22, 0.90), (5, grids.R0, 33, 0.85), (5, other, 11, 0.5), (3, grids.R0, 11, 0.7)]
+    for section, cfg, seed, f1 in planned:
+        experiments.log_result_row(result_row(section, cfg, seed, f1), tmp_path)
+        folder = tmp_path / "runs" / experiments.make_run_id(section, cfg, seed)
+        folder.mkdir(parents=True)
+        (folder / "model.keras").write_bytes(b"x")
+    removed = experiments.prune_models(grids.R0, {"dir": tmp_path, "section": 5})
+    assert sorted(removed) == ["s5_r0_seed11", "s5_r0_seed33"]
+    kept = sorted(path.parent.name for path in tmp_path.glob("runs/*/model.keras"))
+    assert kept == ["s3_r0_seed11", "s5_other_seed11", "s5_r0_seed22"]
+
+
+def test_budget_stops_before_starting_runs(tmp_path, monkeypatch):
+    monkeypatch.setattr(experiments, "run_one", lambda cfg, seed, ctx: pytest.fail("no run may start"))
+    ctx = {"section": 5, "dir": tmp_path, "smoke": False, "deadline": 0.0}
+    assert experiments.run_grid([grids.R0], [11, 22], ctx) == 0
+    monkeypatch.setenv("RUN_BUDGET_MINUTES", "0")
+    assert experiments.section_deadline(5) is None
+    monkeypatch.delenv("RUN_BUDGET_MINUTES")
+    assert experiments.section_deadline(5) is not None and experiments.section_deadline(3) is None

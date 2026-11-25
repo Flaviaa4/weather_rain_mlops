@@ -166,17 +166,18 @@ def collect_predictions(model, cfg, data):
 
 def save_run_artifacts(run_dir, run_id, record, history, val_metrics, probabilities, data, model):
     run_report.save_json(record, run_dir / "config.json")
-    run_report.plot_curves(history, run_dir / "curves.png", run_id)
+    run_report.plot_curves(history, run_dir / "curves.png", run_id, config.config_setting(record["config"], "min_epochs"))
     run_report.save_json(val_metrics, run_dir / "val_metrics.json")
     run_report.plot_confusion_matrix(val_metrics["confusion_matrix"], run_dir / "confusion_matrix.png",
                                      f"{run_id}: validation, macro F1 {val_metrics['macro_f1']:.3f}")
     run_report.save_predictions(data["val_paths"], data["val_labels"], probabilities, run_dir / "val_predictions.csv")
-    model.save(run_dir / "model.keras")
+    from src import model as model_lib
+    model_lib.save_without_optimizer(model, run_dir / "model.keras")
     return run_dir
 
 
 def history_fields(history, cfg):
-    best = run_report.best_epoch_index(history)
+    best = run_report.best_epoch_index(history, config.config_setting(cfg, "min_epochs"))
     row = history.iloc[best]
     return {"epochs_run": len(history), "best_epoch": best + 1, "train_loss": row["loss"],
             "train_accuracy": row["accuracy"], "history_val_loss": row["val_loss"],
@@ -243,18 +244,57 @@ def log_progress(index, total, row, eta_minutes):
                 row["best_epoch"], row["minutes"], eta_minutes)
 
 
-def run_grid(configs, seeds, ctx):
-    todo = pending_runs(configs, seeds, ctx)
+def log_plan(planned, todo, ctx):
     guess = initial_minutes_per_run(ctx)
-    planned = len(configs) * len(seeds)
     LOGGER.info("%d runs planned, %d already done, %d to run. Initial ETA: %s", planned, planned - len(todo), len(todo),
                 f"{estimate_total_time(len(todo), guess):.0f} min" if guess else "after the first run")
+
+
+def section_deadline(section):
+    minutes = float(os.environ.get("RUN_BUDGET_MINUTES", grids.SECTION_BUDGET_MINUTES.get(section, 0)))
+    return time.monotonic() + minutes * 60 if minutes > 0 else None
+
+
+def past_deadline(ctx):
+    return ctx.get("deadline") is not None and time.monotonic() > ctx["deadline"]
+
+
+def log_budget_stop(left):
+    LOGGER.info("Time budget reached: %d runs not started (%s). Attach this version's output and run the same GROUP "
+                "again to finish them.", len(left), ", ".join(f"{cfg['name']} seed {seed}" for cfg, seed in left))
+
+
+def best_run_id(rows):
+    return rows.sort_values(["val_macro_f1", "val_loss"], ascending=[False, True])["run_id"].iloc[0]
+
+
+def prune_models(cfg, ctx):
+    results = read_results(ctx["dir"])
+    rows = results[(results["config_hash"] == config_hash(cfg)) & (results["section"] == ctx["section"])]
+    if rows.empty:
+        return []
+    keep, removed = best_run_id(rows), []
+    for run_id in rows["run_id"]:
+        path = Path(ctx["dir"]) / "runs" / run_id / "model.keras"
+        if run_id != keep and path.exists():
+            path.unlink()
+            removed.append(run_id)
+    return removed
+
+
+def run_grid(configs, seeds, ctx):
+    todo = pending_runs(configs, seeds, ctx)
+    log_plan(len(configs) * len(seeds), todo, ctx)
     durations = []
     for index, (cfg, seed) in enumerate(todo, start=1):
+        if past_deadline(ctx):
+            log_budget_stop(todo[index - 1:])
+            break
         row = run_one(cfg, seed, ctx)
         durations.append(row["minutes"])
+        prune_models(cfg, ctx)
         log_progress(index, len(todo), row, estimate_total_time(len(todo) - index, float(np.mean(durations))))
-    return len(todo)
+    return len(durations)
 
 
 def stratified_indices(labels, per_class, seed):
@@ -349,15 +389,16 @@ def check_run_artifacts(run_dir):
 def run_smoke(ctx):
     smoke_ctx = {**ctx, "dir": Path(ctx["dir"]) / "smoke", "smoke": True}
     shutil.rmtree(smoke_ctx["dir"], ignore_errors=True)
-    configs = [grids.BASELINE, grids.R0, grids.R0_SHUFFLED_LABELS]
+    configs = grids.smoke_configs(ctx["section"])
     run_grid(configs, [config.SEEDS[0]], smoke_ctx)
     for cfg in configs:
         check_run_artifacts(Path(smoke_ctx["dir"]) / "runs" / make_run_id(ctx["section"], cfg, config.SEEDS[0]))
     if pending_runs(configs, [config.SEEDS[0]], smoke_ctx):
         raise RuntimeError("resume check failed: finished smoke runs are not skipped")
     run_overfit_check(smoke_ctx, steps=20)
-    run_diag(smoke_ctx, steps=3)
-    LOGGER.info("Smoke test passed: runs, artifacts, results.csv, resume skip, overfit check and diag all work")
+    if ctx["section"] in DIAG_SECTIONS:
+        run_diag(smoke_ctx, steps=3)
+    LOGGER.info("Smoke test passed: runs, artifacts, results.csv, resume skip and overfit check work (plus diag in Section 3)")
 
 
 def require_gpu():
@@ -399,7 +440,7 @@ def next_group_message(section, last_group):
 def run_section(section, groups, data_dir, experiments_dir):
     setup_logging(experiments_dir, f"section{section}")
     ctx = {"section": section, "data_dir": Path(data_dir), "dir": Path(experiments_dir), "smoke": False,
-           "backup": os.environ.get("USE_BACKUP") == "1"}
+           "backup": os.environ.get("USE_BACKUP") == "1", "deadline": section_deadline(section)}
     for group in groups:
         LOGGER.info("Section %s, group %s: start", section, group)
         run_group(section, group, ctx)

@@ -25,8 +25,9 @@ def read_history(path):
     return history.drop_duplicates(subset="epoch", keep="last").reset_index(drop=True)
 
 
-def best_epoch_index(history):
-    return int(history["val_loss"].idxmin())
+def best_epoch_index(history, start=0):
+    losses = history["val_loss"]
+    return int((losses.iloc[start:] if start < len(losses) else losses).idxmin())
 
 
 def draw_metric(axis, history, metric, best_index):
@@ -47,9 +48,9 @@ def draw_learning_rate(axis, history):
     style_axis(axis)
 
 
-def plot_curves(history, path, title):
+def plot_curves(history, path, title, start=0):
     apply_style()
-    best = best_epoch_index(history)
+    best = best_epoch_index(history, start)
     figure, axes = plt.subplots(1, 3, figsize=(14, 3.8))
     draw_metric(axes[0], history, "loss", best)
     draw_metric(axes[1], history, "accuracy", best)

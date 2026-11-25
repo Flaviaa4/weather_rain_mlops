@@ -1,0 +1,248 @@
+{
+  "steps": 300,
+  "per_class": 8,
+  "seed": 11,
+  "pipeline": {
+    "dtype": "float32",
+    "shape": [
+      128,
+      128,
+      3
+    ],
+    "min": 0.0,
+    "max": 1.0,
+    "eval_equals_inference_path": true,
+    "train_equals_eval_ignoring_order": true,
+    "channel_mean_gap_rgb": 0.007564365863800049,
+    "channel_mean_gap_if_bgr": 0.6573196649551392,
+    "passed": true
+  },
+  "variants": [
+    {
+      "variant": "baseline",
+      "batch_norm": false,
+      "dropout": 0.0,
+      "augment": "none",
+      "l2": 0.0,
+      "bn_momentum": null,
+      "steps": 300,
+      "fit_last_step": {
+        "accuracy": 1.0,
+        "loss": 1.2107170732633676e-06
+      },
+      "training_mode": {
+        "accuracy": 1.0,
+        "loss": 1.2032710554684299e-06
+      },
+      "inference": {
+        "evaluate": {
+          "accuracy": 1.0,
+          "loss_with_regularization": 1.199541202367982e-06
+        },
+        "predict": {
+          "accuracy": 1.0,
+          "loss": 1.1995457418551385e-06
+        },
+        "manual": {
+          "accuracy": 1.0,
+          "loss": 1.2032710554684299e-06
+        },
+        "predict_vs_manual_max_abs_diff": 1.1920928955078125e-07
+      },
+      "inference_after_bn_refresh": {
+        "accuracy": 1.0,
+        "loss": 1.2032710554684299e-06
+      },
+      "max_bn_mean_gap_in_std": 0.0
+    },
+    {
+      "variant": "r0",
+      "batch_norm": true,
+      "dropout": 0.3,
+      "augment": "medium",
+      "l2": 0.0001,
+      "bn_momentum": 0.99,
+      "steps": 300,
+      "fit_last_step": {
+        "accuracy": 1.0,
+        "loss": 0.04923473671078682
+      },
+      "training_mode": {
+        "accuracy": 1.0,
+        "loss": 0.0004993706730214665
+      },
+      "inference": {
+        "evaluate": {
+          "accuracy": 0.375,
+          "loss_with_regularization": 6.622990131378174
+        },
+        "predict": {
+          "accuracy": 0.375,
+          "loss": 6.494845248159225
+        },
+        "manual": {
+          "accuracy": 0.375,
+          "loss": 6.494845642862821
+        },
+        "predict_vs_manual_max_abs_diff": 1.1920928955078125e-07
+      },
+      "inference_after_bn_refresh": {
+        "accuracy": 1.0,
+        "loss": 4.55755053414526e-05
+      },
+      "max_bn_mean_gap_in_std": 0.4830124080181122
+    },
+    {
+      "variant": "r0_no_batch_norm",
+      "batch_norm": false,
+      "dropout": 0.3,
+      "augment": "medium",
+      "l2": 0.0001,
+      "bn_momentum": null,
+      "steps": 300,
+      "fit_last_step": {
+        "accuracy": 0.96875,
+        "loss": 0.10820254683494568
+      },
+      "training_mode": {
+        "accuracy": 1.0,
+        "loss": 0.062319263227329426
+      },
+      "inference": {
+        "evaluate": {
+          "accuracy": 1.0,
+          "loss_with_regularization": 0.04425842687487602
+        },
+        "predict": {
+          "accuracy": 1.0,
+          "loss": 0.009682502873576028
+        },
+        "manual": {
+          "accuracy": 1.0,
+          "loss": 0.009682512369642234
+        },
+        "predict_vs_manual_max_abs_diff": 1.1920928955078125e-07
+      },
+      "inference_after_bn_refresh": {
+        "accuracy": 1.0,
+        "loss": 0.009682512369642234
+      },
+      "max_bn_mean_gap_in_std": 0.0
+    },
+    {
+      "variant": "r0_dropout0_no_augment",
+      "batch_norm": true,
+      "dropout": 0.0,
+      "augment": "none",
+      "l2": 0.0001,
+      "bn_momentum": 0.99,
+      "steps": 300,
+      "fit_last_step": {
+        "accuracy": 1.0,
+        "loss": 0.03963597118854523
+      },
+      "training_mode": {
+        "accuracy": 1.0,
+        "loss": 4.699592295332178e-05
+      },
+      "inference": {
+        "evaluate": {
+          "accuracy": 0.375,
+          "loss_with_regularization": 6.171191215515137
+        },
+        "predict": {
+          "accuracy": 0.375,
+          "loss": 6.1316429960969785
+        },
+        "manual": {
+          "accuracy": 0.375,
+          "loss": 6.131643292210262
+        },
+        "predict_vs_manual_max_abs_diff": 2.384185791015625e-07
+      },
+      "inference_after_bn_refresh": {
+        "accuracy": 1.0,
+        "loss": 4.699592295332178e-05
+      },
+      "max_bn_mean_gap_in_std": 0.13065233826637268
+    },
+    {
+      "variant": "r0_bn_momentum_0.9",
+      "batch_norm": true,
+      "dropout": 0.3,
+      "augment": "medium",
+      "l2": 0.0001,
+      "bn_momentum": 0.9,
+      "steps": 300,
+      "fit_last_step": {
+        "accuracy": 1.0,
+        "loss": 0.04924192652106285
+      },
+      "training_mode": {
+        "accuracy": 1.0,
+        "loss": 0.0005275342382635933
+      },
+      "inference": {
+        "evaluate": {
+          "accuracy": 1.0,
+          "loss_with_regularization": 0.04906417429447174
+        },
+        "predict": {
+          "accuracy": 1.0,
+          "loss": 7.281034956203331e-05
+        },
+        "manual": {
+          "accuracy": 1.0,
+          "loss": 7.281034958201915e-05
+        },
+        "predict_vs_manual_max_abs_diff": 1.1920928955078125e-07
+      },
+      "inference_after_bn_refresh": {
+        "accuracy": 1.0,
+        "loss": 5.838173480239016e-05
+      },
+      "max_bn_mean_gap_in_std": 0.08622799813747406
+    },
+    {
+      "variant": "overfit_check_config",
+      "batch_norm": true,
+      "dropout": 0.0,
+      "augment": "none",
+      "l2": 0.0,
+      "bn_momentum": 0.99,
+      "steps": 300,
+      "fit_last_step": {
+        "accuracy": 1.0,
+        "loss": 1.2438591511454433e-05
+      },
+      "training_mode": {
+        "accuracy": 1.0,
+        "loss": 1.2334587235049505e-05
+      },
+      "inference": {
+        "evaluate": {
+          "accuracy": 0.40625,
+          "loss_with_regularization": 5.891861915588379
+        },
+        "predict": {
+          "accuracy": 0.40625,
+          "loss": 5.8918616374334425
+        },
+        "manual": {
+          "accuracy": 0.40625,
+          "loss": 5.891861578730551
+        },
+        "predict_vs_manual_max_abs_diff": 1.1920928955078125e-07
+      },
+      "inference_after_bn_refresh": {
+        "accuracy": 1.0,
+        "loss": 1.2334587235049505e-05
+      },
+      "max_bn_mean_gap_in_std": 0.12053637951612473
+    }
+  ],
+  "cause": "a",
+  "reason": "Only batch norm differs between modes: refreshing the moving statistics on the same batch closes the gap, and the model without batch norm has no gap.",
+  "tf_version": "2.21.0",
+  "gpu": "Tesla T4"
+}

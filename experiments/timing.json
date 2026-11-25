@@ -1,0 +1,34 @@
+{
+  "epoch_seconds": {
+    "cnn": 1.294379413999991,
+    "baseline": 0.5120904194999412
+  },
+  "typical_epochs": 60,
+  "typical_minutes_per_run": 1.6277127473333242,
+  "units_per_hour": 1.0,
+  "groups": [
+    {
+      "group": "A",
+      "runs": 1,
+      "typical_minutes": 1.6277127473333242,
+      "worst_minutes": 3.5692818683333107,
+      "worst_units": 0.059488031138888516
+    },
+    {
+      "group": "B",
+      "runs": 5,
+      "typical_minutes": 4.227118764166373,
+      "worst_minutes": 8.06779691041593,
+      "worst_units": 0.13446328184026551
+    },
+    {
+      "group": "C",
+      "runs": 5,
+      "typical_minutes": 8.13856373666662,
+      "worst_minutes": 17.846409341666554,
+      "worst_units": 0.29744015569444254
+    }
+  ],
+  "tf_version": "2.21.0",
+  "gpu": "Tesla T4"
+}

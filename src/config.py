@@ -45,6 +45,12 @@ EARLY_STOP_PATIENCE = env_int("EARLY_STOP_PATIENCE", 15)
 LR_PATIENCE = env_int("LR_PATIENCE", 5)
 LR_FACTOR = env_float("LR_FACTOR", 0.5)
 MIN_LR = env_float("MIN_LR", 1e-6)
+# optional keys keep the Section 3 config hashes unchanged
+OPTIONAL_CONFIG_DEFAULTS = {"bn_momentum": 0.99, "warmup_epochs": 0, "min_epochs": 0}
+
+
+def config_setting(cfg, key):
+    return cfg.get(key, OPTIONAL_CONFIG_DEFAULTS[key])
 
 DHASH_SIZE = env_int("DHASH_SIZE", 8)
 DUPLICATE_MAX_DISTANCE = env_int("DUPLICATE_MAX_DISTANCE", 4)

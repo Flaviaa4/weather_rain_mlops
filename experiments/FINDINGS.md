@@ -132,3 +132,67 @@ Brightness is also informative (shiny brightest at 0.56, sunrise darkest at 0.38
 ### Section 2 gate
 
 Closed 2026-11-24. Preprocessing tests pass locally and in Colab, including the training-vs-inference equality tests. Plots are in `experiments/figures/`. Three feature interpretations are above. R0 inputs are fixed: 128 px, medium augmentation without hue.
+
+## Section 3: Experiment harness, sanity checks, baselines
+
+Kaggle T4 (one device), TensorFlow 2.21.0, 2026-11-24, 19 minutes for the whole version (setup, 118 tests, smoke, timing, diag, 11 runs). Validation set only. The test set was not touched. Details and hypotheses: S3-E1 to S3-E4 in `EXPERIMENT_LOG.md`.
+
+### Baseline vs R0 (5 seeds each, validation)
+
+| | baseline (vanilla CNN) | R0 (all optimizations) |
+|---|---|---|
+| macro F1 mean +- std | **0.908 +- 0.027** | 0.659 +- 0.260 |
+| macro F1 min / max | 0.872 / 0.943 | 0.429 / 0.941 |
+| macro F1 per seed (11, 22, 33, 44, 55) | 0.872, 0.894, 0.909, 0.943, 0.923 | 0.451, 0.536, 0.941, 0.429, 0.941 |
+| rainy F1 mean +- std (min) | 0.963 +- 0.046 (0.889) | 0.390 +- 0.534 (0.000) |
+| epochs run / best epoch | 18 to 26 / 3 to 11 | 16, 16, 64, 16, 77 / 1, 1, 49, 1, 62 |
+| parameters | 8,408,644 | 305,380 |
+| minutes per run | 0.29 | 1.10 |
+
+Std is the sample std over seeds. `python -m src.selection --section 3` prints this table.
+
+- The baseline is strong and stable. Its weak pair is cloudy vs shiny (48 of 720 predictions), not rainy vs cloudy (6). Rainy F1 is 0.96 but moves by up to 0.11 between seeds on 20 images.
+- R0 is bimodal. Converged seeds (33, 55) reach 0.941 with rainy F1 0.97, which is 0.033 above the baseline mean (slightly more than one baseline std). Stalled seeds (11, 22, 44) stop at epoch 16 with best epoch 1 and rainy F1 0.000, with almost every rainy image called cloudy.
+- Selection rule today: the baseline wins, R0 is not eligible (worst seed below 0.85).
+
+### Sanity checks
+
+- **Overfit one batch:** passed. Training accuracy 1.0 at step 7. Inference accuracy 1.0 after refreshing the batch norm statistics on the batch, against 0.406 with stale statistics.
+- **Diag verdict (a), confirmed:** batch norm moving statistics lag in inference mode. The input pipeline is identical for training, evaluation and inference (exact equality, RGB order checked against an independent decode), and the three inference paths agree. Only batch norm variants show the gap, a refresh closes it in every variant, and momentum 0.9 closes it without a refresh.
+- **Shuffled labels:** validation macro F1 0.381, outside the random-prediction chance band. With the train class prior on 144 images, single draws give 0.245 +- 0.036 (95% band 0.18 to 0.32). The best of 44 draws gives 0.327 +- 0.018 (95% band 0.30 to 0.37), and 0.9% of those reach 0.381. It is not leakage. The single fixed permutation keeps a chance correlation with the true classes (class-weighted shares 0.21 to 0.31 instead of 0.25). A model that cannot memorize learns exactly that part, and the observed confusion follows it. Across 2000 permutations this mechanism gives 0.22 +- 0.21, and 24% of permutations reach 0.381. Train accuracy stayed at 0.24 to 0.34, so the noise labels were not memorized. Simulation: `python -m src.chance_band`, output `experiments/sanity/chance_band.json`.
+- **Reference levels:** majority class 0.115 macro F1, random with train prior 0.243 +- 0.035.
+
+### Why R0 stalls (from history.csv, no new run)
+
+Training itself is not stuck. Validation in inference mode is.
+
+| seed | train acc epoch 1 / 16 | val loss epoch 1 | peak val loss (epoch) | best val loss of epochs 1 and 2 | first epoch that beats it | outcome |
+|---|---|---|---|---|---|---|
+| 11 | 0.69 / 0.91 | 1.205 | 3.17 (9) | 1.205 (epoch 1) | none by 16 | stopped at 16 |
+| 22 | 0.66 / 0.93 | 1.157 | 2.60 (8) | 1.157 (epoch 1) | none by 16 | stopped at 16 |
+| 33 | 0.68 / 0.93 | 1.321 | 4.48 (6) | 1.299 (epoch 2) | 16 | converged, 0.941 |
+| 44 | 0.70 / 0.93 | 1.253 | 3.48 (10) | 1.253 (epoch 1) | none by 16 | stopped at 16 |
+| 55 | 0.68 / 0.93 | 1.165 | 2.27 (10) | 0.987 (epoch 2) | 14 | converged, 0.941 |
+
+- Training-mode accuracy rises smoothly in every seed, with no plateau or divergence. Learning rate, class weights and augmentation do not block training.
+- Validation loss follows the batch norm moving statistics, not the weights. With 23 steps per epoch and momentum 0.99, the initial values (mean 0, variance 1) still make up 79% of each moving statistic after epoch 1, 31% after 5, 10% after 10 and 3% after 15. Validation loss is near-uniform at epoch 1, explodes at epochs 6 to 10 while the statistics are a stale mix, and recovers around epochs 14 to 20.
+- Early stopping (patience 15) fires during that lag unless the best loss happened to land on epoch 2. That is what separated the two converged seeds from the three stalled ones. ReduceLROnPlateau is fooled the same way and halves the rate at epochs 7 and 12.
+- Direct evidence: the stalled seeds' restored weights score 0.49 to 0.59 in inference mode on their own training images.
+
+### Other notes
+
+- GPU runs are not bit-for-bit reproducible with fixed seeds. Decisions use 5-seed means.
+- From Section 5 on, `model.keras` is kept only for the best seed per configuration and saved without optimizer state (user decision; Section 3 zip was 556 MB, 97 MB per baseline-family model). This changes rule 6 (`EXPERIMENT_LOG.md`, Run files).
+- The baseline is now built by the same `build_cnn` function as R0. It has the same layers and parameter count as in Section 3, so the Section 3 baseline runs stay valid as the reference.
+
+### Open questions
+
+7. Does a lower batch norm momentum or a later stopping rule make R0 converge on every seed, and does converged R0 really beat the baseline by more than one std? Section 5 groups A and B.
+8. Which single optimization explains the gap between the baseline and converged R0, and does adding batch norm alone hurt the baseline? Section 5 group C (ablation).
+9. The baseline's weak pair is cloudy vs shiny. Is that label ambiguity (fair-weather clouds on blue sky, Section 1 review) or a model limit? Section 4 misclassified gallery.
+10. The shuffled-label control is weak with one permutation. If it is rerun, use 3 or more permutations and the permutation null.
+11. Alternative fix not planned yet: evaluate validation with refreshed batch norm statistics each epoch. It keeps momentum 0.99, but the exported model would then need refreshed statistics too.
+
+### Section 5 plan (first Kaggle version)
+
+Written in `EXPERIMENT_LOG.md` before any run, with the selection rule: highest mean validation macro F1 over 5 seeds, ties within one std go to the lower std, and the worst seed must be 0.85 or more. Groups: A batch norm momentum 0.9 and 0.8, B patience 30 with at least 20 epochs, C ablation from the baseline (3 seeds), D learning rate 3e-4, 5-epoch warmup, light augmentation. Budget guard: no new run after 50 minutes of the experiment process.

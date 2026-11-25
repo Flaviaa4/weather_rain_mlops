@@ -79,3 +79,68 @@ def test_diag_runs_and_pipeline_is_identical(tiny_dataset, tmp_path):
     assert len(result["variants"]) == 6 and result["cause"] in {"a", "b", "c", "not_reproduced"}
     assert all(diagnostics.paths_agree(row) for row in result["variants"])
     assert (tmp_path / "sanity" / "diag_overfit_one_batch.json").exists()
+
+
+def random_batch(count=16, size=32):
+    rng = np.random.default_rng(0)
+    return rng.random((count, size, size, 3), dtype=np.float32), metrics.one_hot(np.tile(np.arange(4), count // 4), 4)
+
+
+def test_baseline_network_matches_section3_parameter_count():
+    built = model.build_model(grids.BASELINE)
+    assert built.count_params() == 8_408_644
+    assert [layer.__class__.__name__ for layer in built.layers].count("Conv2D") == 2
+
+
+def test_ablation_and_momentum_options_reach_the_layers():
+    with_bn = model.build_model(grids.variant(grids.BASELINE, "bn", batch_norm=True))
+    assert len(model.batch_norm_layers(with_bn)) == 2
+    assert all(layer.momentum == 0.99 for layer in model.batch_norm_layers(with_bn))
+    fast = model.build_model(grids.variant(small(grids.R0), "m", bn_momentum=0.9))
+    assert all(layer.momentum == 0.9 for layer in model.batch_norm_layers(fast))
+    pooled = model.build_model(grids.variant(grids.BASELINE, "gap", pooling="gap"))
+    assert "GlobalAveragePooling2D" in {layer.__class__.__name__ for layer in pooled.layers}
+
+
+def test_warmup_rates_and_best_weights_after_min_epochs(tmp_path):
+    cfg = small(grids.R0, max_epochs=3, warmup_epochs=2, min_epochs=2, early_stop_patience=10)
+    images, targets = random_batch()
+    built = model.compile_model(model.build_model(cfg), cfg)
+    built.fit(images, targets, validation_data=(images, targets), epochs=3,
+              callbacks=model.get_callbacks(cfg, tmp_path / "history.csv"), verbose=0)
+    history = experiments.run_report.read_history(tmp_path / "history.csv")
+    assert history["learning_rate"].tolist() == pytest.approx([5e-4, 1e-3, 1e-3], rel=1e-5)
+
+
+@pytest.mark.parametrize("start, expected", [(0, 0), (2, 3), (9, 0)])
+def test_restore_best_weights_ignores_epochs_before_start(start, expected):
+    built = model.build_model(small(grids.BASELINE))
+    callback = model.RestoreBestWeights(start_epoch=start)
+    callback.set_model(built)
+    callback.on_train_begin()
+    for epoch, loss in enumerate([0.1, 0.2, 0.5, 0.4, 0.6]):
+        built.set_weights([np.full_like(weights, epoch) for weights in built.get_weights()])
+        callback.on_epoch_end(epoch, {"val_loss": loss})
+    callback.on_train_end()
+    assert built.get_weights()[0].flat[0] == expected
+
+
+def test_save_without_optimizer_is_smaller_and_predicts_the_same(tmp_path):
+    cfg = small(grids.R0)
+    images, targets = random_batch()
+    built = model.compile_model(model.build_model(cfg), cfg)
+    built.fit(images, targets, epochs=1, verbose=0)
+    built.save(tmp_path / "with_optimizer.keras")
+    model.save_without_optimizer(built, tmp_path / "model.keras")
+    loaded = model.keras.models.load_model(tmp_path / "model.keras")
+    assert np.allclose(loaded.predict(images, verbose=0), built.predict(images, verbose=0), atol=1e-5)
+    assert (tmp_path / "model.keras").stat().st_size < 0.6 * (tmp_path / "with_optimizer.keras").stat().st_size
+
+
+def test_section5_smoke_config_runs_end_to_end(tiny_dataset, tmp_path):
+    ctx = {"section": 5, "group": "test", "data_dir": tiny_dataset, "dir": tmp_path, "smoke": True, "backup": False}
+    for cfg in grids.smoke_configs(5):
+        row = experiments.run_one(small(cfg), 11, ctx)
+        assert experiments.check_run_artifacts(tmp_path / "runs" / row["run_id"])
+    history = experiments.run_report.read_history(tmp_path / "runs" / "s5_smoke_r0_options_seed11" / "history.csv")
+    assert history["learning_rate"].iloc[0] == pytest.approx(1.5e-4, rel=1e-5)

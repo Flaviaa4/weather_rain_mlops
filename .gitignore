@@ -35,3 +35,6 @@ models/candidate/
 data/cache/
 data/*.db-journal
 locust/results/*.html
+
+experiments/smoke/
+*.keras
