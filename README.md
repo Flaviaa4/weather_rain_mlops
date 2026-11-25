@@ -4,7 +4,7 @@ Image classifier for four weather classes (cloudy, rainy, shiny, sunrise) that s
 
 > **Model status:** the services run the final model `weather_cnn` (Section 7, seed 55 of `r0_patience30_min20`). On the locked test set, evaluated once: **macro F1 0.900** (95% CI 0.845 to 0.947), accuracy 0.903, rainy recall 0.966. Validation macro F1 is 0.962, which is optimistic because the seed was the best of 5 picked on validation. Full record: [models/metrics.json](models/metrics.json). See [The final model](#the-final-model).
 
-Video demo: _link added in Section 14_. Live URL: _added after deployment_.
+Video demo: _link added in Section 14_. Live URL: http://74.148.56.220 (see the [Deployment guide](#deployment-guide)).
 
 ## Architecture
 
@@ -17,7 +17,7 @@ Video demo: _link added in Section 14_. Live URL: _added after deployment_.
   ./data    (bind mount) : train and valid images, uploads/<class>/, weather.db (SQLite)
 ```
 
-- **api** ([app/api.py](app/api.py), [src/prediction.py](src/prediction.py)): loads the ONNX model with ONNX Runtime and preprocesses each image with the same function used in training ([src/preprocessing.py](src/preprocessing.py)). The image has no TensorFlow (a test checks this), so it is small and starts fast. It checks the model file on every request and reloads it when the trainer promotes a new one. Scale it with `--scale api=N`. Every response includes the container hostname, so you can see the load balancing.
+- **api** ([app/api.py](app/api.py), [src/prediction.py](src/prediction.py)): loads the ONNX model with ONNX Runtime and preprocesses each image with the same function used in training ([src/preprocessing.py](src/preprocessing.py)). The image has no TensorFlow (a test checks the api code never imports it), so it is small and starts fast. It checks the model file on every request and reloads it when the trainer promotes a new one. Scale it with `--scale api=N`. Every response includes the container hostname, so you can see the load balancing.
 - **trainer** ([app/trainer_api.py](app/trainer_api.py), [src/uploads.py](src/uploads.py), [src/database.py](src/database.py), [src/retrain.py](src/retrain.py)): uploads, SQLite records, retraining, metrics, data insights.
 - **ui** ([app/ui.py](app/ui.py)): Streamlit with four pages: Predict, Insights, Upload and retrain, Monitoring.
 - **nginx** ([docker/nginx.conf](docker/nginx.conf)): one public port. It resolves service names at request time (Docker DNS, `valid=10s`), so new api replicas are picked up without a restart.
@@ -43,6 +43,51 @@ requirements.txt     every package, pinned. Per service: requirements-api.txt, -
 ```
 
 Dataset: Roboflow "weather classification" (folder export). 997 images after the Section 1 duplicate cleanup: train 719, valid 144, test 134. The cleaned images are committed in `data/train`, `data/valid` and `data/test`, one folder per class (about 37 MB). `data/quarantine/` (the removed duplicates) and `data/uploads/` (runtime uploads) are not committed.
+
+## Code structure
+
+The pipeline is split into small single-purpose functions. The `.py` files in `src/` and `app/` hold 599 function definitions (nested ones included), and none is longer than 20 lines. This count covers only `src/` and `app/`; `tests/`, `locust/` and the notebooks are not included. Orchestrator functions (`run_one`, `run_retraining`, `run_final`) only call the steps below in order.
+
+| Pipeline stage | Functions |
+|---|---|
+| Data loading | `preprocessing.list_labeled_files`, `preprocessing.load_split`, `experiments.prepare_data` |
+| Preprocessing | `preprocessing.preprocess_image` = `to_rgb` then `resize_image` then `to_array` then `normalize_array`; `augment_image`, `build_dataset` |
+| Model building | `model.build_cnn` from `conv_unit`, `conv_block`, `classifier_head`; `compile_model`, `get_callbacks` |
+| Training | `model.train_model`, `model.compute_class_weights`, `experiments.fit_run`, `experiments.run_one` |
+| Evaluation | `metrics.classification_metrics`, `metrics.per_class_scores`, `model.evaluate_model`, `prediction.evaluate_onnx_model` |
+| Export | `onnx_export.export_keras_to_onnx` from `convert` (`export_with_from_keras`, fallback `export_with_saved_model`) and `add_metadata`; `final_model.check_parity` |
+| Prediction | `prediction.predict_image_bytes` = `validate_image_bytes` then `preprocess_image_bytes` then `predict_array` (`get_session`, `run_inference`, `format_prediction`) |
+| Retraining | `retrain.check_base_data`, `prepare_retraining_data`, `fine_tune_model`, `export_candidate`, `evaluate_model_file`, `run_retraining` |
+| Promotion rule | `retrain.should_promote` (candidate macro F1 at least the current one), `decide_and_apply`, `archive_current_model`, `promote_model`, `atomic_replace` |
+
+Modules and their single job:
+
+| Module | Job | Main functions |
+|---|---|---|
+| [src/config.py](src/config.py) | Paths and settings from environment variables | `env_path`, `env_int`, `env_float` |
+| [src/preprocessing.py](src/preprocessing.py) | Image loading, resizing, normalisation, augmentation, tf.data datasets | `load_split`, `preprocess_image`, `augment_image`, `build_dataset` |
+| [src/model.py](src/model.py) | CNN definition, compile, callbacks, training, class weights | `build_cnn`, `compile_model`, `get_callbacks`, `train_model`, `evaluate_model` |
+| [src/metrics.py](src/metrics.py) | Confusion matrix and classification metrics without sklearn | `confusion_matrix`, `per_class_scores`, `classification_metrics` |
+| [src/onnx_export.py](src/onnx_export.py) | Keras to ONNX conversion | `export_keras_to_onnx`, `convert` |
+| [src/prediction.py](src/prediction.py) | ONNX Runtime session cache, input validation, prediction | `get_session`, `validate_image_bytes`, `predict_image_bytes`, `model_version` |
+| [src/retrain.py](src/retrain.py) | Retraining job and the promotion rule | `run_retraining`, `fine_tune_model`, `should_promote`, `promote_model`, `maybe_auto_retrain` |
+| [src/uploads.py](src/uploads.py) | Saving uploaded images and zips, disk check | `save_uploads`, `save_zip_uploads`, `check_disk_space` |
+| [src/database.py](src/database.py) | SQLite records of uploads and training runs | `init_db`, `add_upload`, `start_run`, `update_run`, `list_runs` |
+| [src/insights.py](src/insights.py) | Image features and class separation for the Insights page | `extract_features`, `auc_table`, `insight_payload` |
+| [src/experiments.py](src/experiments.py) | Resumable experiment grids for the training sections | `run_one`, `run_grid`, `run_section`, `estimate_section` |
+| [src/grids.py](src/grids.py) | Experiment configurations per section | `section_groups`, `final_config` |
+| [src/selection.py](src/selection.py) | Picking the configuration from multi-seed results | `summarize_group`, `select_config` |
+| [src/final_model.py](src/final_model.py) | Final training, single test evaluation, parity, install | `run_final`, `check_parity`, `evaluate_test_once`, `install_final_model` |
+| [src/run_report.py](src/run_report.py) | Per-run curves, confusion matrix and predictions files | `plot_curves`, `plot_confusion_matrix`, `save_predictions` |
+| [src/audit.py](src/audit.py), [src/audit_visuals.py](src/audit_visuals.py) | Dataset audit and duplicate quarantine | `scan_dataset`, `build_duplicate_groups`, `apply_quarantine` |
+| [src/eda.py](src/eda.py) | EDA figures and the image size experiment | `run_eda`, `run_size_experiment` |
+| [src/chance_band.py](src/chance_band.py), [src/diagnostics.py](src/diagnostics.py) | Chance-level baselines and training diagnostics | `build_chance_band`, `run_batch_diagnostics` |
+| [src/check_env.py](src/check_env.py) | Colab and Kaggle environment and export check | `run_checks` |
+| [src/placeholder.py](src/placeholder.py) | Placeholder model for testing without the trained model | `ensure_placeholder_files` |
+| [src/notebook_views.py](src/notebook_views.py) | Tables and figures for the notebook | `load_results`, `final_overview`, `parity_table` |
+| [app/api.py](app/api.py) | Prediction API | `predict`, `limited_predict`, `health`, `model_info` |
+| [app/trainer_api.py](app/trainer_api.py) | Upload, retrain, metrics and insights API | `upload`, `upload_zip`, `start_retrain`, `retrain_status`, `health` |
+| [app/ui.py](app/ui.py) | Streamlit UI, one function per page and widget | `page_predict`, `page_insights`, `page_retrain`, `page_monitoring` |
 
 ## Run locally without Docker
 
@@ -71,43 +116,125 @@ docker compose up -d --scale api=4        # more prediction containers
 - The model files are in the repository (`models/weather_cnn.h5`, `.onnx`, `class_names.json`, `metrics.json`), so the api is ready on first start. With `MODEL_NAME=placeholder_model` the trainer creates the placeholder files instead, and the api `/health` returns 503 until they exist.
 - Settings (environment or a `.env` file next to the compose file): `MODEL_NAME`, `PUBLIC_PORT`, `PUBLIC_BASE_URL` (the address users open, used only for the UI sidebar links to `/docs`, `/health`, `/trainer/docs`, `/trainer/health` and `/trainer/retrain/status`; the compose default is `http://74.148.56.220`, include the port if `PUBLIC_PORT` is not 80, and leave it empty to hide the links), `API_CPUS` (CPU limit per api container, default 1), `RETRAIN_AUTO`, `RETRAIN_UPLOAD_THRESHOLD` (default 40), `RETRAIN_MAX_EPOCHS` (default 10), `MIN_FREE_DISK_MB` (default 500).
 
-## Deployment on a cloud VM (step by step)
+## Deployment guide
 
-Platform: Docker on a Linux VM. Serverless platforms such as AWS Lambda are not used, because retraining needs a long-running process and local disk.
+This is how the live app at **http://74.148.56.220** was deployed. A grader can repeat it on a new VM, or check the running one with step 6.
 
-1. **Create the VM.** Ubuntu 24.04 LTS, at least 2 vCPU, 8 GB RAM (4 GB works with 1 or 2 api replicas) and a 30 GB disk. Give it a static public IP (AWS Elastic IP, GCP static external IP or Azure static public IP).
-2. **Open the ports.** In the firewall or security group, allow inbound TCP 22 (SSH, your IP only) and TCP 80 (HTTP, everyone).
-3. **Install Docker:**
+**Model:** the served model is a custom CNN trained from scratch (3 convolution blocks of 2 conv layers with 32, 64 and 128 filters, batch norm, global average pooling, dropout 0.3, a 128-unit dense layer and a 4-class softmax). It uses no transfer learning and no pretrained weights. Retraining starts from our own saved `models/weather_cnn.h5`.
+
+### Requirements
+
+| Item | Value |
+|---|---|
+| VM | Azure Standard_B2s_v2 (2 vCPU, 8 GiB RAM), region Austria East |
+| OS and disk | Ubuntu 24.04 LTS, 30 GB disk |
+| Public IP | static, 74.148.56.220 |
+| Inbound ports | 22 (SSH) and 80 (HTTP), opened with network security group rules |
+| Software | Docker 29 and Docker Compose v5, installed with the get.docker.com script |
+
+The dataset (`data/train`, `data/valid`, `data/test`, about 37 MB) and the model files (`models/weather_cnn.h5`, `weather_cnn.onnx`, `class_names.json`, `metrics.json`) are in the repository, so nothing else has to be downloaded.
+
+### Steps
+
+1. **Create the VM.** In the Azure portal: Ubuntu Server 24.04 LTS, size Standard_B2s_v2, region Austria East, 30 GB OS disk, administrator account `azureuser` with password authentication. Set the public IP address to **Static** so it does not change when the VM restarts.
+2. **Open the ports.** In the VM's network security group, add inbound rules for TCP 22 (SSH) and TCP 80 (HTTP).
+3. **SSH in:** `ssh azureuser@74.148.56.220` and enter the admin password. Optional hardening, not used for this deployment: switch to SSH key login, disable password login, and limit the port 22 rule to your own IP.
+4. **Install Docker:**
    ```bash
-   sudo apt-get update && sudo apt-get install -y ca-certificates curl git
    curl -fsSL https://get.docker.com | sudo sh
    sudo usermod -aG docker $USER && newgrp docker
-   docker compose version
+   docker --version && docker compose version
    ```
-4. **Clone the repository:**
+5. **Clone and start:**
    ```bash
    git clone https://github.com/Flaviaa4/weather_rain_mlops.git && cd weather_rain_mlops
+   docker compose up -d --build
+   docker compose ps
    ```
-5. **Check the base images.** They are in git (`data/train`, `data/valid`, `data/test`, about 37 MB), so the clone already has them. Retraining needs `data/train` and `data/valid`: `curl http://<vm-ip>/trainer/health` (after step 6) shows `"base_data": {"ok": true, ...}` with the image counts, or `"status": "degraded"` and the missing path if they are absent.
-6. **Start everything:** `docker compose up -d --build`. The first build downloads TensorFlow for the trainer image and takes a few minutes.
-7. **Verify:** `curl http://<vm-ip>/health` returns `"status":"ok"`. Then open `http://<vm-ip>/` in a browser and predict one image.
-8. **Start on boot:** `sudo systemctl enable docker`. Every service has `restart: always`, so the containers come back after a reboot. Test it with `sudo reboot`, then run step 7 again.
-9. **Optional domain:** point a DNS A record at the static IP.
+   The first build takes a few minutes because the trainer image installs TensorFlow.
+6. **Health check:**
+   ```bash
+   curl http://74.148.56.220/health                 # api: "status": "ok", model weather_cnn
+   curl -I http://74.148.56.220/docs                # api Swagger page: HTTP 200
+   curl http://74.148.56.220/trainer/health         # trainer: "status": "ok", "base_data": {"ok": true, ...}
+   IMG=$(ls data/valid/rainy/*.jpg | head -1)
+   curl -F "file=@$IMG" http://74.148.56.220/predict
+   ```
+   Then open http://74.148.56.220/ for the UI.
+7. **Scale the api:**
+   ```bash
+   docker compose up -d --scale api=N               # N = 1, 2 or 4
+   docker compose restart nginx
+   docker compose ps api
+   ```
+   Each `/predict` response has a `hostname` field (the container ID, shown in the UI as "Served by container"). Repeated requests show N different values. Restore with `docker compose up -d --scale api=1` and `docker compose restart nginx`.
+8. **Update after a push to GitHub:**
+   ```bash
+   cd ~/weather_rain_mlops && git pull
+   docker compose up -d --build
+   ```
+   Compose recreates only the containers whose image or settings changed. Add `--scale api=N` to keep more than one api container. nginx reads `docker/nginx.conf` from a bind mount, so after a change to that file also run `docker compose restart nginx`. `data/uploads/`, `data/weather.db` and `models/` are bind mounts too, so uploads, run history and a promoted model survive the rebuild.
+9. **Keep it up until grading is finished:**
+   - Every service has `restart: always`, and Docker starts on boot, so the containers come back after a crash or a VM reboot (`sudo systemctl is-enabled docker` prints `enabled`).
+   - The public IP is static, so the URL stays the same.
+   - Do not stop or deallocate the VM in the Azure portal, and keep auto-shutdown off.
 
-### Where ONNX Runtime is used, and why
+### ONNX Runtime
 
-- Training and retraining use TensorFlow/Keras, in the trainer container only. After each retrain, [src/onnx_export.py](src/onnx_export.py) converts the Keras model to ONNX with `tf2onnx.convert.from_keras`, with the SavedModel and `python -m tf2onnx.convert` command as a fallback. The trainer evaluates the ONNX file itself on the validation set, so the file it scores is the file that will be served.
-- The api container runs that `.onnx` file with `onnxruntime` on CPU. The image needs no TensorFlow, so it is much smaller and starts faster. That makes running several replicas cheap.
-- Promotion copies the new files next to the old ones and swaps them in with an atomic rename (`os.replace`). A request sees either the old model or the new one, never a half-written file. The api notices that the file changed and reloads it on the next request.
+- **Export:** after training, [src/onnx_export.py](src/onnx_export.py) converts the Keras model with `tf2onnx.convert.from_keras` (input `image`, shape `(None, 128, 128, 3)`, output `probabilities`). If that fails it falls back to a SavedModel export and `python -m tf2onnx.convert --saved-model`. The final model was exported with `from_keras`. A retrain exports its candidate the same way.
+- **Parity check:** [src/final_model.py](src/final_model.py) reloads the `.h5` on CPU and compares Keras and ONNX Runtime probabilities image by image. Maximum absolute difference: 5.1e-7 on the 144 validation images and **1.4e-6** on the 134 test images, against a tolerance of 1e-4, with the same predicted class on 100% of images (recorded under `parity` in [models/metrics.json](models/metrics.json)).
+- **Serving:** the api ([src/prediction.py](src/prediction.py)) runs `models/weather_cnn.onnx` with `onnxruntime` on CPU (`ONNX_THREADS=1` per container). It keeps one session in memory and reloads it when the file on disk changes, for example after a promoted retrain.
+- **Why ONNX:** ONNX Runtime is a small inference-only runtime, so the api image needs no TensorFlow at all (`requirements-api.txt` does not list it, and a test checks that the api code never imports it). The image is smaller, the containers start faster, and running several replicas is cheap. Inference also skips the TensorFlow and Keras layers, which keeps per-request CPU time low on a 2 vCPU VM.
 
-### Keep it running until grading is finished
+### Architecture
 
-- [ ] A billing alert is set at a low amount, and the account has enough credit for the grading period.
-- [ ] Nobody stops or terminates the instance. Turn on termination protection if the cloud supports it.
-- [ ] `restart: always` is set in the compose file, and Docker starts on boot (step 8).
-- [ ] A disk usage alert is set at 80%. The trainer also refuses uploads when less than `MIN_FREE_DISK_MB` is free (HTTP 507 with a clear message).
-- [ ] Daily health check: `curl -fsS http://<vm-ip>/health` from a cron job or an uptime monitor.
-- [ ] A backup copy of `models/` and `data/weather.db` is saved off the server after every promoted retrain.
+nginx listens on port 80 and is the only public entry point ([docker/nginx.conf](docker/nginx.conf)):
+
+| Path | Service | Job |
+|---|---|---|
+| `/predict`, `/health`, `/uptime`, `/model-info`, `/docs`, `/redoc`, `/openapi.json` | **api** ([app/api.py](app/api.py)) | ONNX predictions and model info. Scalable to N containers. |
+| `/trainer/...` | **trainer** ([app/trainer_api.py](app/trainer_api.py)) | Uploads, SQLite records, retraining, metrics, data insights, disk report (`/trainer/system`). One container, with TensorFlow. |
+| `/` | **ui** ([app/ui.py](app/ui.py)) | Streamlit pages Predict, Insights, Upload and retrain, Monitoring. Calls the api and the trainer through nginx. |
+
+nginx resolves the service names through Docker DNS (`valid=10s`) and spreads requests over the api containers.
+
+Environment variables (set them in a `.env` file next to `docker-compose.yml`, then run `docker compose up -d`):
+
+| Variable | Service | Default | What it does |
+|---|---|---|---|
+| `MODEL_NAME` | api, trainer | `weather_cnn` | Which files in `models/` are served and retrained (`<MODEL_NAME>.onnx`, `.h5`). `placeholder_model` is only for testing without the trained model. |
+| `MAX_CONCURRENT_PREDICTIONS` | api | `8` | Maximum predictions running at once per api container. Extra requests wait instead of using more memory. |
+| `RETRAIN_MAX_EPOCHS` | trainer | `10` | Maximum fine-tuning epochs per retrain (early stopping can end it sooner). |
+| `PUBLIC_BASE_URL` | ui | `http://74.148.56.220` | Address used only for the sidebar links (`/docs`, `/health`, `/trainer/docs`, `/trainer/health`, `/trainer/retrain/status`). Empty hides the links. The UI still calls the services through the internal `http://nginx` address. |
+
+Other settings: `PUBLIC_PORT` (default 80), `API_CPUS` (default 1.0), `RETRAIN_AUTO` (default 1), `RETRAIN_UPLOAD_THRESHOLD` (default 40), `MIN_FREE_DISK_MB` (default 500).
+
+### Capacity
+
+Resource limits per container ([docker-compose.yml](docker-compose.yml)):
+
+| Service | CPU | Memory |
+|---|---|---|
+| api (each replica) | 1.0 | 768 MiB |
+| trainer | no limit | 3 GiB |
+| ui, nginx | no limit | no limit |
+
+4 api replicas (3 GiB) plus the trainer (3 GiB) leave about 2 GiB of the 8 GiB for the ui, nginx and the OS. With 2 vCPU, more than 2 api containers add no throughput (see the flood test results).
+
+Disk use:
+
+- **Uploads:** saved to `data/uploads/<class>/`, at most 10 MB per file (`MAX_UPLOAD_MB`), deduplicated by SHA-256. The trainer refuses uploads with HTTP 507 when less than `MIN_FREE_DISK_MB` (500 MB) is free.
+- **Retrain runs:** each run writes a candidate model to `models/candidate/run_<id>/` (about 2.5 MB) and deletes it when the run ends. A promoted run first copies the current model to `models/archive/<timestamp>_before_run<id>/` (about 2.5 MB each, kept). Run records go to the small SQLite file `data/weather.db`.
+- **Docker images:** the trainer image is by far the largest because of TensorFlow. Check sizes with `docker system df`, and free disk with `df -h /` or `curl http://74.148.56.220/trainer/system`.
+
+To free space:
+
+```bash
+docker system prune          # stopped containers, unused networks, dangling images, build cache
+docker builder prune         # build cache only
+```
+
+Both keep `data/` and `models/`, which are bind mounts in the repository folder. `docker system prune -a` also removes unused images, so the next `docker compose up -d --build` downloads and builds them again. Old folders in `models/archive/` can be deleted by hand when they are no longer needed.
 
 ## Retraining and the trigger
 
