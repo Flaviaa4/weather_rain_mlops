@@ -7,6 +7,11 @@ import streamlit as st
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000").rstrip("/")
 TRAINER_URL = os.environ.get("TRAINER_URL", "http://localhost:8001").rstrip("/")
+# API_URL and TRAINER_URL are Docker-internal names, so the sidebar links use the address users reach through nginx
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+PUBLIC_PATHS = [("Prediction API docs", "/docs"), ("Prediction API health", "/health"),
+                ("Trainer API docs", "/trainer/docs"), ("Trainer health", "/trainer/health"),
+                ("Retraining status", "/trainer/retrain/status")]
 CLASS_NAMES = ["cloudy", "rainy", "shiny", "sunrise"]
 CLASS_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
 CLASS_SCALE = alt.Scale(domain=CLASS_NAMES, range=CLASS_COLORS)
@@ -277,10 +282,19 @@ def page_monitoring():
 PAGES = {"Predict": page_predict, "Insights": page_insights, "Upload and retrain": page_retrain, "Monitoring": page_monitoring}
 
 
+def public_links(base=PUBLIC_BASE_URL):
+    return [(label, f"{base}{path}") for label, path in PUBLIC_PATHS] if base else []
+
+
+def show_public_links(links):
+    if links:
+        st.sidebar.markdown("**Service links**\n\n" + "\n".join(f"- [{label}]({url})" for label, url in links))
+
+
 def main():
     st.set_page_config(page_title="Weather rain classifier", layout="wide")
     page = st.sidebar.radio("Page", list(PAGES))
-    st.sidebar.caption(f"API {API_URL}\n\nTrainer {TRAINER_URL}")
+    show_public_links(public_links())
     PAGES[page]()
 
 

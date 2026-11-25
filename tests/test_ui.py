@@ -54,6 +54,25 @@ def test_monitoring_shows_placeholder_warning(routed_services):
     assert [metric.value for metric in app.metric] == ["up", "up"]
 
 
+def sidebar_text(app):
+    return " ".join(item.value for item in app.sidebar.markdown)
+
+
+def test_sidebar_links_use_the_public_address(routed_services, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "http://203.0.113.7/")
+    text = sidebar_text(run_page("Predict"))
+    for path in ["/docs", "/health", "/trainer/docs", "/trainer/health", "/trainer/retrain/status"]:
+        assert f"(http://203.0.113.7{path})" in text
+    assert "localhost" not in text and "nginx" not in text
+
+
+def test_sidebar_links_are_hidden_without_a_public_address(routed_services, monkeypatch):
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    app = run_page("Predict")
+    assert "Service links" not in sidebar_text(app)
+    assert not any("localhost" in item.value for item in app.sidebar.caption)
+
+
 def test_unreachable_trainer_shows_error_not_crash(service_env, monkeypatch):
     def refuse(*args, **kwargs):
         raise requests.ConnectionError("connection refused")

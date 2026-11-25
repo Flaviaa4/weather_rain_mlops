@@ -75,4 +75,5 @@ services:
     environment:
       API_URL: http://nginx
       TRAINER_URL: http://nginx/trainer
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://74.148.56.220}
     restart: always
