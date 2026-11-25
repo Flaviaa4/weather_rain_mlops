@@ -42,6 +42,9 @@ def test_summary_table_charts_and_breaking_point(tmp_path):
     summary = (tmp_path / "summary.md").read_text()
     assert "1 api containers: breaks at 50 users" in summary and "2 api containers: no break" in summary
     assert "2 hosts, 60 / 40" in summary
+    assert "| containers | users | requests/s | requests/s vs fewest containers | median ms | p95 ms | failures |" in summary
+    assert "| 2 | 50 | 38.0 | 1.9 | 450.0 | 900.0 | 0 | 0.00% |" in summary
+    assert "| 1 | 50 | 20.0 | 1.0 | 1250.0 | 2500.0 | 50 | 5.00% |" in summary
     assert (tmp_path / "latency_vs_replicas.png").stat().st_size > 0 and (tmp_path / "throughput_vs_replicas.png").exists()
 
 

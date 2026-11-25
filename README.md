@@ -126,7 +126,43 @@ pip install -r requirements-dev.txt
 REPLICAS="1 2 4" USERS="10 50 100" DURATION=3m bash locust/run_flood_test.sh
 ```
 
-For each api replica count, the script scales the api service and runs a 30 s warm-up that is discarded. It then runs a 3-minute measured run for each user count. It saves the Locust CSVs, the responses per container hostname and `docker stats`, and finally writes `locust/results/summary.md`, `summary.csv`, `latency_vs_replicas.png` and `throughput_vs_replicas.png`. The breaking point is the smallest user count where more than 1% of requests fail or p95 latency exceeds 2 s. The load is 90% `/predict` with validation images and 10% `/health`. Results: _added after the runs on the VM_.
+For each api replica count, the script scales the api service and runs a 30 s warm-up that is discarded. It then runs a 3-minute measured run for each user count. It saves the Locust CSVs, the responses per container hostname and `docker stats`, and finally writes `locust/results/summary.md`, `summary.csv`, `latency_vs_replicas.png` and `throughput_vs_replicas.png`. The breaking point is the smallest user count where more than 1% of requests fail or p95 latency exceeds 2 s. The load is 90% `/predict` with validation images and 10% `/health`.
+
+### Remote run: Locust on your PC, scaling on the VM
+
+The test sends only `POST /predict` (40 fixed validation images from `data/valid`, 90% of requests) and `GET /health` (10%). It never uploads or retrains, and `/predict` stores nothing (the api has no data volume and mounts `models/` read-only), so the training data and the uploads stay untouched.
+
+1. On the VM: `docker compose up -d --scale api=N --no-recreate api nginx` (N = 1, 2, 4), wait 15 s.
+2. On the PC: `LOCUST_HOSTNAME_CSV=locust/results/rN_u50_rep1_hostnames.csv locust -f locust/locustfile.py --headless --host http://74.148.56.220 -u 50 -r 10 -t 60s --only-summary --csv locust/results/rN_u50_rep1 --html locust/results/rN_u50_rep1.html`
+3. After the three runs: `python locust/summarize.py locust/results` writes `summary.md`, `summary.csv` and two charts.
+4. On the VM, restore the default: `docker compose up -d --scale api=1`.
+
+### Results (fill in after the runs)
+
+VM: _type, vCPU, RAM_. Date: _date_. Load: 50 users, spawn 10 per s, 60 s per run, from _location of the PC_ (latency includes the network).
+
+| api containers | users | requests/s | median ms | p95 ms | failures | responses per container |
+|---|---|---|---|---|---|---|
+| 1 | 50 | | | | | |
+| 2 | 50 | | | | | |
+| 4 | 50 | | | | | |
+
+- Scaling: _requests/s from 1 to 4 containers, and where it stops growing (for example the VM CPU count)_.
+- Balancing: _responses per container from the hostname files, roughly equal or not_.
+- Breaking point: _the first run with more than 1% failures or p95 above 2 s, or none_.
+
+### Incident: OOM kill at 300 users with 1 container
+
+The first N=1 runs at 300 concurrent users crashed the api container. The kernel log showed `Memory cgroup out of memory: Killed process uvicorn` with anon-rss about 494 MB against the 512 MiB limit. Docker restarted the container 19 times and nginx returned 502 while it was down. Every waiting request had its image read and decoded at the same time, so memory grew with the number of users.
+
+Fix:
+
+1. The api memory limit is now 768 MiB (cpus stays 1.0). 4 api replicas (3 GiB) plus the 3 GiB trainer still fit in the 8 GiB VM, so do not raise it further.
+2. `/predict` runs at most `MAX_CONCURRENT_PREDICTIONS` predictions at once per container (default 8). Extra requests wait in the event loop without holding a thread or a decoded image, so memory per container is bounded. Under heavy load they show up as higher latency (or a 504 after nginx's 60 s timeout) instead of a crash.
+3. `/health` is outside the cap and uses the normal thread pool, so health checks never wait behind predictions.
+4. Uploads larger than `MAX_UPLOAD_MB` (10 MB) are rejected with 413 from the `Content-Length` header, before the file is read or decoded.
+
+Rerun the N=1 test after `docker compose up -d --build api` on the VM, and check `docker inspect --format '{{.RestartCount}}'` on the api container stays at 0.
 
 ## The final model
 

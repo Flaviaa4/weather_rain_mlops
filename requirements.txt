@@ -13,6 +13,7 @@ h5py==3.14.0
 ml_dtypes==0.6.0
 fastapi==0.141.1
 uvicorn==0.54.0
+anyio==4.16.0
 python-multipart==0.0.33
 requests==2.34.2
 streamlit==1.66.1

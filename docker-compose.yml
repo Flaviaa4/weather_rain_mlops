@@ -26,13 +26,14 @@ services:
     environment:
       <<: *model-env
       ONNX_THREADS: "1"
+      MAX_CONCURRENT_PREDICTIONS: ${MAX_CONCURRENT_PREDICTIONS:-8}
     volumes:
       - ./models:/app/models:ro
     deploy:
       resources:
         limits:
           cpus: "${API_CPUS:-1.0}"
-          memory: 512M
+          memory: 768M
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
       interval: 30s

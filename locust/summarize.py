@@ -13,6 +13,9 @@ P95_LIMIT_MS = 2000
 FAILURE_LIMIT = 0.01
 USER_COLORS = ["#9ec5f0", "#5a9be3", "#2a78d6", "#1b4f8f", "#0f2f57"]
 INK, MUTED, GRID = "#1f2328", "#59636e", "#e6e8eb"
+TABLE_HEADERS = {"replicas": "containers", "users": "users", "rps": "requests/s", "speedup": "requests/s vs fewest containers",
+                 "median_ms": "median ms", "p95_ms": "p95 ms", "failures": "failures", "failure_rate": "failure rate",
+                 "requests": "requests", "hostnames": "responses per container"}
 
 
 def parse_tag(path):
@@ -76,10 +79,24 @@ def breaking_points(table):
     return points
 
 
+def add_speedup(table):
+    fewest = table.loc[table.groupby("users")["replicas"].idxmin()].set_index("users")["rps"]
+    return table.assign(speedup=(table["rps"] / table["users"].map(fewest)).round(2))
+
+
+def cell(column, value):
+    if column == "failure_rate":
+        return f"{value:.2%}"
+    return f"{value:g}" if column in {"failures", "requests"} else str(value)
+
+
+def display_table(table):
+    return table[list(TABLE_HEADERS)].rename(columns=TABLE_HEADERS)
+
+
 def markdown_table(table):
-    columns = ["replicas", "users", "requests", "failure_rate", "rps", "median_ms", "p95_ms", "p99_ms", "hostnames"]
-    lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
-    lines += ["| " + " | ".join(str(row[c]) for c in columns) + " |" for _, row in table.iterrows()]
+    lines = ["| " + " | ".join(TABLE_HEADERS.values()) + " |", "|" + "---|" * len(TABLE_HEADERS)]
+    lines += ["| " + " | ".join(cell(c, row[c]) for c in TABLE_HEADERS) + " |" for _, row in table.iterrows()]
     return "\n".join(lines)
 
 
@@ -112,7 +129,7 @@ def plot_metric(table, metric, ylabel, title, path):
 
 def write_summary(folder):
     folder = Path(folder)
-    table = average_repeats(collect_runs(folder))
+    table = add_speedup(average_repeats(collect_runs(folder)))
     table.to_csv(folder / "summary.csv", index=False)
     plot_metric(table, "p95_ms", "p95 latency (ms)", "p95 latency vs api containers", folder / "latency_vs_replicas.png")
     plot_metric(table, "rps", "requests per second", "Throughput vs api containers", folder / "throughput_vs_replicas.png")
@@ -123,4 +140,4 @@ def write_summary(folder):
 
 
 if __name__ == "__main__":
-    print(write_summary(sys.argv[1] if len(sys.argv) > 1 else "locust/results").to_string(index=False))
+    print(display_table(write_summary(sys.argv[1] if len(sys.argv) > 1 else "locust/results")).to_string(index=False))
