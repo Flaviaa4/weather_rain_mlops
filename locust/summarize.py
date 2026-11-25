@@ -115,7 +115,8 @@ def style_axis(axis, ylabel):
 
 def plot_metric(table, metric, ylabel, title, path):
     figure, axis = plt.subplots(figsize=(6.4, 4))
-    for color, (users, group) in zip(USER_COLORS, table.groupby("users")):
+    colors = USER_COLORS[-table["users"].nunique():]
+    for color, (users, group) in zip(colors, table.groupby("users")):
         group = group.sort_values("replicas")
         axis.plot(group["replicas"], group[metric], color=color, linewidth=2, marker="o", markersize=7, label=f"{users} users")
     axis.set_xticks(sorted(table["replicas"].unique()))

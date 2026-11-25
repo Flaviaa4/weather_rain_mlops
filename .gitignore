@@ -13,7 +13,6 @@ data/uploads/*
 experiments/runs/
 models/archive/*
 !models/archive/.gitkeep
-locust/results/*.csv
 !locust/results/.gitkeep
 *.db
 data/quarantine/
@@ -25,7 +24,7 @@ models/placeholder_model*
 models/candidate/
 data/cache/
 data/*.db-journal
-locust/results/*.html
+locust/results/**/*.html
 
 experiments/smoke/
 *.keras

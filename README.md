@@ -128,28 +128,39 @@ REPLICAS="1 2 4" USERS="10 50 100" DURATION=3m bash locust/run_flood_test.sh
 
 For each api replica count, the script scales the api service and runs a 30 s warm-up that is discarded. It then runs a 3-minute measured run for each user count. It saves the Locust CSVs, the responses per container hostname and `docker stats`, and finally writes `locust/results/summary.md`, `summary.csv`, `latency_vs_replicas.png` and `throughput_vs_replicas.png`. The breaking point is the smallest user count where more than 1% of requests fail or p95 latency exceeds 2 s. The load is 90% `/predict` with validation images and 10% `/health`.
 
-### Remote run: Locust on your PC, scaling on the VM
+### Remote run: Locust in Azure Cloud Shell, scaling on the VM
 
 The test sends only `POST /predict` (40 fixed validation images from `data/valid`, 90% of requests) and `GET /health` (10%). It never uploads or retrains, and `/predict` stores nothing (the api has no data volume and mounts `models/` read-only), so the training data and the uploads stay untouched.
 
 1. On the VM: `docker compose up -d --scale api=N --no-recreate api nginx` (N = 1, 2, 4), wait 15 s.
-2. On the PC: `LOCUST_HOSTNAME_CSV=locust/results/rN_u50_rep1_hostnames.csv locust -f locust/locustfile.py --headless --host http://74.148.56.220 -u 50 -r 10 -t 60s --only-summary --csv locust/results/rN_u50_rep1 --html locust/results/rN_u50_rep1.html`
-3. After the three runs: `python locust/summarize.py locust/results` writes `summary.md`, `summary.csv` and two charts.
+2. In Azure Cloud Shell (clone the repo, then `pip install --user locust==2.47.0 pandas==2.2.3 matplotlib==3.10.0`):
+   ```bash
+   N=1; LOCUST_HOSTNAME_CSV=locust/results/r${N}_u300_rep1_hostnames.csv locust -f locust/locustfile.py --headless --host http://74.148.56.220 -u 300 -r 50 -t 60s --only-summary --csv locust/results/r${N}_u300_rep1 --html locust/results/r${N}_u300_rep1.html
+   ```
+3. After the three runs, download `locust/results` from Cloud Shell into the local repo and run `python locust/summarize.py locust/results`. It writes `summary.md`, `summary.csv` and two charts.
 4. On the VM, restore the default: `docker compose up -d --scale api=1`.
 
-### Results (fill in after the runs)
+### Results
 
-VM: _type, vCPU, RAM_. Date: _date_. Load: 50 users, spawn 10 per s, 60 s per run, from _location of the PC_ (latency includes the network).
+VM: Azure Standard_B2s_v2 (2 vCPU, 8 GiB), Austria East. Date: 2026-11-25. Load: 300 users, spawn 50 per s, 60 s per run, generated from Azure Cloud Shell. Each api container has 1 CPU, 768 MiB and at most 8 concurrent predictions. Source: [locust/results/summary.md](locust/results/summary.md).
 
-| api containers | users | requests/s | median ms | p95 ms | failures | responses per container |
-|---|---|---|---|---|---|---|
-| 1 | 50 | | | | | |
-| 2 | 50 | | | | | |
-| 4 | 50 | | | | | |
+| api containers | users | requests/s | vs 1 container | median ms | p95 ms | failures | /predict responses per container |
+|---|---|---|---|---|---|---|---|
+| 1 | 300 | 53.3 | 1.00x | 4900 | 5800 | 0 of 3147 | 2817 |
+| 2 | 300 | 93.6 | 1.76x | 1900 | 3900 | 0 of 5528 | 2510 / 2502 |
+| 4 | 300 | 90.2 | 1.69x | 1800 | 4500 | 0 of 5329 | 1270 / 1223 / 1176 / 1173 |
 
-- Scaling: _requests/s from 1 to 4 containers, and where it stops growing (for example the VM CPU count)_.
-- Balancing: _responses per container from the hostname files, roughly equal or not_.
-- Breaking point: _the first run with more than 1% failures or p95 above 2 s, or none_.
+![Throughput vs api containers](locust/results/throughput_vs_replicas.png)
+![p95 latency vs api containers](locust/results/latency_vs_replicas.png)
+
+Interpretation:
+
+- **1 to 2 containers:** about 1.76x the throughput (53.3 to 93.6 requests/s), and the median latency drops from 4900 ms to 1900 ms.
+- **2 to 4 containers:** no gain (93.6 to 90.2 requests/s, p95 4500 ms against 3900 ms). The VM has only 2 vCPU and each api container is limited to 1 CPU, so two containers already use all the cores. Four containers only share the same two cores. More containers need a bigger VM.
+- **Balancing:** nginx spreads the requests evenly. The per-container counts differ by less than 1% with 2 containers and by about 8% at most with 4.
+- **Failures:** 0 in all three runs after the memory fix (see the incident below).
+- **Latency:** high at 300 users because requests queue behind the cap of 8 concurrent predictions per container. With the 2 s p95 rule, every configuration is past its breaking point at 300 users. The cap trades latency for stability: requests wait instead of the container running out of memory.
+- **Earlier runs not used:** the first runs (50 users from a home PC) were dominated by the network latency to Austria East (p95 14 to 20 s at under 6 requests/s), so they are not in the table. Their files are kept in `locust/results/home_pc_u50/`. The load generator runs in Azure Cloud Shell instead.
 
 ### Incident: OOM kill at 300 users with 1 container
 
@@ -179,3 +190,7 @@ python -m src.final_model --install experiments/incoming/section7
 ```
 
 The install step checks that the ONNX file is the one the test set was evaluated with, that ONNX parity passed, and that the ONNX model reproduces the recorded validation macro F1 on `data/valid`. Then it copies the four files into `models/`, where the api and the trainer read them. The copy in `experiments/final_model/` (with `test_touch.json` and the test predictions) stays as the record of the single test evaluation. A promoted retrain replaces the files in `models/` (the previous ones go to `models/archive/`), so `models/metrics.json` then holds the retrain record. Set `MODEL_NAME=placeholder_model` in `.env` only to test the services without the trained model.
+
+### Known false positive: fireworks predicted as rainy
+
+A photo of fireworks was classified as **rainy**. This is expected behaviour, not a bug in the API or the pipeline. The model knows only four classes (cloudy, rainy, shiny, sunrise) and has no "other" or "not a sky photo" class, so its softmax output always picks one of the four, even for an image unlike anything in the training data. A dark sky with bright falling streaks is closest to the rainy training images. The UI shows a low-confidence warning below 60%, but an image outside the training data can still get a high score, so the warning does not catch every case like this. Possible fixes are an extra "other" class trained on non-weather images, or an out-of-distribution check before the prediction is shown.
