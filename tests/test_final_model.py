@@ -1,5 +1,7 @@
+import contextlib
 import json
 import shutil
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -12,11 +14,12 @@ SIZE = 32
 
 
 class OnnxBackedModel:
-    def __init__(self, onnx_path, noise=0.0):
-        self.onnx_path, self.noise = onnx_path, noise
+    def __init__(self, onnx_path, events, noise=0.0):
+        self.onnx_path, self.events, self.noise = onnx_path, events, noise
 
     def predict(self, images, batch_size=32, verbose=0):
         from src import prediction
+        self.events.append("predict")
         probabilities = prediction.predict_probabilities(images, self.onnx_path)
         prediction.drop_session(self.onnx_path)
         return probabilities + self.noise
@@ -33,8 +36,25 @@ def save_onnx(path):
 def fake_export(model, paths, run_id):
     save_onnx(paths["onnx"])
     paths["h5"].write_bytes(b"h5")
-    model.onnx_path = paths["onnx"]
     return "fake"
+
+
+def fake_cpu_device(monkeypatch, noise=0.0):
+    events = []
+
+    @contextlib.contextmanager
+    def scope():
+        events.append("enter cpu")
+        yield
+        events.append("exit cpu")
+
+    def load(h5_path):
+        events.append(f"load {Path(h5_path).name}")
+        return OnnxBackedModel(Path(h5_path).with_suffix(".onnx"), events, noise)
+
+    monkeypatch.setattr(final_model, "cpu_scope", scope)
+    monkeypatch.setattr(final_model, "load_cpu_model", load)
+    return events
 
 
 @pytest.fixture
@@ -47,11 +67,11 @@ def final_ctx(tmp_path, monkeypatch, make_tiny_dataset):
         row = {"run_id": experiments.make_run_id(7, cfg, seed), "section": 7, "seed": seed, "val_loss": 0.3,
                "config_hash": experiments.config_hash(cfg), "val_macro_f1": f1}
         experiments.log_result_row(row, ctx["dir"])
-    monkeypatch.setattr(final_model, "load_run_model", lambda run_ctx, run_id: OnnxBackedModel(None))
+    monkeypatch.setattr(final_model, "load_run_model", lambda run_ctx, run_id: "model built on GPU:0")
     monkeypatch.setattr(final_model, "export_model", fake_export)
-    monkeypatch.setattr(final_model, "keras_probabilities", lambda model, images: model.predict(images))
+    monkeypatch.setattr(final_model, "tensorflow_available", lambda: True)
     monkeypatch.setattr(experiments, "runtime_info", lambda: {"tf_version": "test", "gpu": "none"})
-    return cfg, ctx
+    return cfg, ctx, fake_cpu_device(monkeypatch)
 
 
 def test_parity_needs_enough_images_small_difference_and_same_classes():
@@ -91,7 +111,7 @@ def test_dataset_fingerprint_changes_when_an_image_changes(tmp_path, make_tiny_d
 
 
 def test_run_final_writes_files_picks_best_seed_and_touches_test_once(final_ctx):
-    cfg, ctx = final_ctx
+    cfg, ctx, _ = final_ctx
     record = final_model.run_final(cfg, ctx)
     paths = final_model.output_paths(ctx["dir"])
     assert all(paths[key].exists() for key in final_model.INSTALLED_FILES + ["test_touch", "test_predictions"])
@@ -105,18 +125,31 @@ def test_run_final_writes_files_picks_best_seed_and_touches_test_once(final_ctx)
         final_model.run_final(cfg, ctx)
 
 
+def test_parity_reloads_the_h5_inside_a_cpu_scope_before_every_predict(final_ctx, tmp_path):
+    cfg, ctx, events = final_ctx
+    final_model.run_final(cfg, ctx)
+    one_check = ["enter cpu", "load weather_cnn.h5", "predict", "exit cpu"]
+    assert events == one_check * 2
+    final_model.install_final_model(ctx["dir"], tmp_path / "models", ctx["data_dir"])
+    assert events == one_check * 3
+
+
 def test_failed_validation_parity_stops_before_the_test_set(final_ctx, monkeypatch):
-    cfg, ctx = final_ctx
-    monkeypatch.setattr(final_model, "load_run_model", lambda run_ctx, run_id: OnnxBackedModel(None, noise=0.01))
+    cfg, ctx, _ = final_ctx
+    fake_cpu_device(monkeypatch, noise=0.01)
     with pytest.raises(RuntimeError, match="parity failed on valid"):
         final_model.run_final(cfg, ctx)
     assert not final_model.output_paths(ctx["dir"])["test_touch"].exists()
 
 
-def test_install_checks_record_and_onnx_then_copies_files(final_ctx, tmp_path):
-    cfg, ctx = final_ctx
+def test_install_checks_record_and_onnx_then_copies_files(final_ctx, tmp_path, monkeypatch):
+    cfg, ctx, _ = final_ctx
     final_model.run_final(cfg, ctx)
     result = final_model.install_final_model(ctx["dir"], tmp_path / "models", ctx["data_dir"])
+    assert result["keras_parity_after_install"]["passed"]
+    monkeypatch.setattr(final_model, "tensorflow_available", lambda: False)
+    skipped = final_model.install_final_model(ctx["dir"], tmp_path / "models_no_tf", ctx["data_dir"])
+    assert "skipped" in skipped["keras_parity_after_install"]
     assert sorted(path.split("models")[-1][1:] for path in result["installed"]) == [
         "class_names.json", "metrics.json", "weather_cnn.h5", "weather_cnn.onnx"]
     metrics_path = final_model.output_paths(ctx["dir"])["metrics"]
@@ -130,7 +163,7 @@ def test_install_checks_record_and_onnx_then_copies_files(final_ctx, tmp_path):
 
 
 def test_install_refuses_an_onnx_file_the_test_set_never_saw(final_ctx, tmp_path):
-    cfg, ctx = final_ctx
+    cfg, ctx, _ = final_ctx
     final_model.run_final(cfg, ctx)
     onnx_path = final_model.output_paths(ctx["dir"])["onnx"]
     onnx_path.write_bytes(onnx_path.read_bytes() + b"0")

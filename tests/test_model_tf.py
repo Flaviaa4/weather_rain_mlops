@@ -150,12 +150,22 @@ def test_final_export_writes_h5_and_onnx_with_parity(tmp_path, make_tiny_dataset
     record = final_model.run_final(cfg, ctx)
     paths = final_model.output_paths(ctx["dir"])
     assert record["parity"]["validation"]["passed"] and record["parity"]["test"]["n_images"] == 24
-    reloaded = model.keras.models.load_model(paths["h5"], compile=False)
     images = experiments.load_split_cached("valid", 32, data_dir)[0]
     onnx_probs = final_model.onnx_probabilities(paths["onnx"], images)
-    assert np.abs(final_model.keras_probabilities(reloaded, images) - onnx_probs).max() < final_model.PARITY_TOLERANCE
+    assert np.abs(final_model.keras_probabilities(paths["h5"], images) - onnx_probs).max() < final_model.PARITY_TOLERANCE
     with pytest.raises(RuntimeError, match="already evaluated"):
         final_model.run_final(cfg, ctx)
+
+
+def test_cpu_parity_runs_for_a_model_built_on_the_gpu(tmp_path):
+    from src import final_model
+    device = "/GPU:0" if tf.config.list_logical_devices("GPU") else "/CPU:0"
+    with tf.device(device):
+        built = model.build_model(small(grids.R0))
+    built.save(tmp_path / "built_on_gpu.h5")
+    images = random_batch()[0]
+    probabilities = final_model.keras_probabilities(tmp_path / "built_on_gpu.h5", images)
+    assert probabilities.shape == (16, 4) and np.allclose(probabilities.sum(axis=1), 1.0, atol=1e-5)
 
 
 def test_section5_smoke_config_runs_end_to_end(tiny_dataset, tmp_path):

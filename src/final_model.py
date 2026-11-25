@@ -67,11 +67,26 @@ def export_model(model, paths, run_id):
     return export_keras_to_onnx(model, paths["onnx"], metadata)
 
 
-# parity compares CPU with CPU: GPU kernels alone moved Section 5 probabilities by 1.5e-4
-def keras_probabilities(model, images):
+def cpu_scope():
+    import tensorflow as tf
+    return tf.device("/CPU:0")
+
+
+def load_cpu_model(h5_path):
     import keras
-    with keras.device("cpu:0"):
+    return keras.models.load_model(str(h5_path), compile=False)
+
+
+# parity is CPU only (GPU kernels moved probabilities by 1.5e-4), and GPU-built variables cannot be read under a CPU scope
+def keras_probabilities(h5_path, images):
+    with cpu_scope():
+        model = load_cpu_model(h5_path)
         return np.asarray(model.predict(images, batch_size=config.BATCH_SIZE, verbose=0), dtype=np.float64)
+
+
+def tensorflow_available():
+    import importlib.util
+    return importlib.util.find_spec("tensorflow") is not None
 
 
 def onnx_probabilities(onnx_path, images):
@@ -95,8 +110,8 @@ def check_parity(report, split):
     return report
 
 
-def evaluate_arrays(model, onnx_path, images, labels):
-    keras_probs, onnx_probs = keras_probabilities(model, images), onnx_probabilities(onnx_path, images)
+def evaluate_arrays(paths, images, labels):
+    keras_probs, onnx_probs = keras_probabilities(paths["h5"], images), onnx_probabilities(paths["onnx"], images)
     return {"metrics": metrics.classification_metrics(onnx_probs, labels), "parity": parity_report(keras_probs, onnx_probs),
             "probabilities": onnx_probs, "labels": labels}
 
@@ -113,14 +128,14 @@ def record_test_touch(paths, run_id, split, n_images):
     return run_report.save_json(record, paths["test_touch"])
 
 
-def evaluate_test_once(model, paths, cfg, ctx, run_id, split):
+def evaluate_test_once(paths, cfg, ctx, run_id, split):
     from src import experiments
     guard_test_once(paths)
     images, labels, files = load_split(split, cfg["image_size"], ctx["data_dir"])
     record_test_touch(paths, run_id, split, len(labels))
     LOGGER.info("Test set touched once: split %s, %d images, model %s", split, len(labels), run_id)
     files = experiments.relative_paths(files, ctx["data_dir"])
-    return {**evaluate_arrays(model, paths["onnx"], images, labels), "files": files}
+    return {**evaluate_arrays(paths, images, labels), "files": files}
 
 
 def bootstrap_matrices(true, predicted, n_classes):
@@ -195,21 +210,20 @@ def log_final(record):
 def validated_export(cfg, ctx, paths):
     rows = config_rows(cfg, ctx)
     run_id = chosen_run(rows)[0]
-    model = load_run_model(ctx, run_id)
-    method = export_model(model, paths, run_id)
+    method = export_model(load_run_model(ctx, run_id), paths, run_id)
     images, labels, _ = load_split("valid", cfg["image_size"], ctx["data_dir"])
-    validation = evaluate_arrays(model, paths["onnx"], images, labels)
+    validation = evaluate_arrays(paths, images, labels)
     check_parity(validation["parity"], "valid")
-    return rows, run_id, model, method, validation
+    return rows, run_id, method, validation
 
 
 def run_final(cfg, ctx, test_split="test"):
     from src import experiments
     cfg, paths = experiments.effective_config(cfg, ctx), output_paths(ctx["dir"])
     guard_test_once(paths)
-    rows, run_id, model, method, validation = validated_export(cfg, ctx, paths)
+    rows, run_id, method, validation = validated_export(cfg, ctx, paths)
     run_report.save_json(list(config.CLASS_NAMES), paths["class_names"])
-    test = {**evaluate_test_once(model, paths, cfg, ctx, run_id, test_split), "split": test_split}
+    test = {**evaluate_test_once(paths, cfg, ctx, run_id, test_split), "split": test_split}
     record = metrics_record(cfg, rows, run_id, method, validation, test, ctx)
     run_report.save_json(record, paths["metrics"])
     save_test_outputs(test, paths, run_id)
@@ -237,9 +251,8 @@ def check_record(record):
     return record
 
 
-def check_onnx_locally(paths, record, data_dir):
+def check_onnx_locally(paths, record, images, labels):
     from src import prediction
-    images, labels, _ = load_split("valid", record["config"]["image_size"], data_dir)
     local = prediction.evaluate_onnx_model(images, labels, paths["onnx"])
     prediction.drop_session(paths["onnx"])
     gap = abs(local["macro_f1"] - record["validation"]["macro_f1"])
@@ -248,14 +261,24 @@ def check_onnx_locally(paths, record, data_dir):
     return local["macro_f1"]
 
 
+def check_keras_parity_locally(paths, images):
+    if not tensorflow_available():
+        return {"skipped": "tensorflow is not installed here, the ONNX check above still ran"}
+    report = parity_report(keras_probabilities(paths["h5"], images), onnx_probabilities(paths["onnx"], images))
+    return check_parity(report, "valid after install")
+
+
 def install_final_model(experiments_dir, models_dir=config.MODELS_DIR, data_dir=config.DATA_DIR):
     paths = check_final_files(output_paths(experiments_dir))
     record = check_record(json.loads(paths["metrics"].read_text(encoding="utf-8")))
-    local_f1 = check_onnx_locally(paths, record, data_dir)
+    images, labels, _ = load_split("valid", record["config"]["image_size"], data_dir)
+    local_f1 = check_onnx_locally(paths, record, images, labels)
+    keras_parity = check_keras_parity_locally(paths, images)
     Path(models_dir).mkdir(parents=True, exist_ok=True)
     installed = [shutil.copy2(paths[key], Path(models_dir) / paths[key].name) for key in INSTALLED_FILES]
     return {"installed": [str(path) for path in installed], "local_validation_macro_f1": local_f1,
-            "run_id": record["run_id"], "test_macro_f1": record["test"]["macro_f1"]}
+            "keras_parity_after_install": keras_parity, "run_id": record["run_id"],
+            "test_macro_f1": record["test"]["macro_f1"]}
 
 
 def parse_args():
