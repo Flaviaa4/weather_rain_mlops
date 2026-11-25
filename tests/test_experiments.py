@@ -160,18 +160,67 @@ def result_row(section, cfg, seed, f1, loss=0.5):
             "config_hash": experiments.config_hash(cfg), "val_macro_f1": f1, "val_loss": loss}
 
 
-def test_prune_models_keeps_only_best_seed_of_the_config(tmp_path):
-    other = grids.variant(grids.R0, "other", learning_rate=3e-4)
-    planned = [(5, grids.R0, 11, 0.80), (5, grids.R0, 22, 0.90), (5, grids.R0, 33, 0.85), (5, other, 11, 0.5), (3, grids.R0, 11, 0.7)]
+def write_runs(tmp_path, planned):
     for section, cfg, seed, f1 in planned:
         experiments.log_result_row(result_row(section, cfg, seed, f1), tmp_path)
         folder = tmp_path / "runs" / experiments.make_run_id(section, cfg, seed)
         folder.mkdir(parents=True)
-        (folder / "model.keras").write_bytes(b"x")
-    removed = experiments.prune_models(grids.R0, {"dir": tmp_path, "section": 5})
+        (folder / "model.keras").write_bytes(b"x" * 1000)
+
+
+def kept_names(tmp_path):
+    return [path.parent.name for path in experiments.kept_models(tmp_path)]
+
+
+def test_prune_seed_models_keeps_only_best_seed_of_the_config(tmp_path):
+    other = grids.variant(grids.R0, "other", learning_rate=3e-4)
+    write_runs(tmp_path, [(5, grids.R0, 11, 0.80), (5, grids.R0, 22, 0.90), (5, grids.R0, 33, 0.85), (5, other, 11, 0.5),
+                          (3, grids.R0, 11, 0.7)])
+    removed = experiments.prune_seed_models(grids.R0, {"dir": tmp_path, "section": 5})
     assert sorted(removed) == ["s5_r0_seed11", "s5_r0_seed33"]
-    kept = sorted(path.parent.name for path in tmp_path.glob("runs/*/model.keras"))
-    assert kept == ["s3_r0_seed11", "s5_other_seed11", "s5_r0_seed22"]
+    assert kept_names(tmp_path) == ["s3_r0_seed11", "s5_other_seed11", "s5_r0_seed22"]
+
+
+def test_prune_models_keeps_best_seed_of_top_three_configs_by_mean(tmp_path):
+    names = ["a", "b", "c", "d", "e"]
+    cfgs = {name: grids.variant(grids.R0, name, learning_rate=0.001 + i) for i, name in enumerate(names)}
+    f1s = {"a": [0.90, 0.80], "b": [0.95, 0.60], "c": [0.84, 0.86], "d": [0.70, 0.72], "e": [0.86, 0.84]}
+    write_runs(tmp_path, [(5, cfgs[n], seed, f1) for n in names for seed, f1 in zip([11, 22], f1s[n])]
+               + [(3, grids.R0, 11, 0.1)])
+    experiments.prune_models({"dir": tmp_path, "section": 5})
+    assert kept_names(tmp_path) == ["s3_r0_seed11", "s5_a_seed11", "s5_c_seed22", "s5_e_seed11"]
+    assert experiments.prune_models({"dir": tmp_path / "empty", "section": 5}) == []
+
+
+def test_run_grid_prunes_to_top_configs_and_smoke_check_counts_models(tmp_path, monkeypatch):
+    cfgs = [grids.variant(grids.R0, f"cfg{i}", learning_rate=0.001 * (i + 1)) for i in range(4)]
+    ctx = {"section": 5, "dir": tmp_path, "smoke": False}
+
+    def fake_run(cfg, seed, run_ctx):
+        f1 = 0.9 - 0.1 * cfgs.index(cfg) + seed / 1000
+        write_runs(tmp_path, [(5, cfg, seed, f1)])
+        return {**result_row(5, cfg, seed, f1), "minutes": 0.1, "val_f1_rainy": f1, "epochs_run": 3, "best_epoch": 2}
+
+    monkeypatch.setattr(experiments, "run_one", fake_run)
+    assert experiments.run_grid(cfgs, [11, 22], ctx) == 8
+    assert kept_names(tmp_path) == ["s5_cfg0_seed22", "s5_cfg1_seed22", "s5_cfg2_seed22"]
+    assert experiments.check_kept_models(ctx, len(cfgs)) == 3
+    with pytest.raises(RuntimeError):
+        experiments.check_kept_models(ctx, 2)
+
+
+def test_folder_size_counts_every_file(tmp_path):
+    write_runs(tmp_path, [(5, grids.R0, 11, 0.9)])
+    expected = sum(path.stat().st_size for path in tmp_path.rglob("*") if path.is_file())
+    assert experiments.log_folder_size(tmp_path) == expected and expected > 1000
+
+
+def test_artifact_check_can_skip_the_pruned_model(tmp_path):
+    for name in experiments.RUN_FILES:
+        (tmp_path / name).write_text("x")
+    assert experiments.check_run_artifacts(tmp_path, with_model=False)
+    with pytest.raises(RuntimeError):
+        experiments.check_run_artifacts(tmp_path)
 
 
 def test_budget_stops_before_starting_runs(tmp_path, monkeypatch):

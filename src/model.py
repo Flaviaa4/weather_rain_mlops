@@ -142,10 +142,15 @@ def get_callbacks(cfg, history_path, backup_dir=None):
     return callbacks
 
 
+# clone_model recompiles the clone in Keras 3 and saves a fresh optimizer of the same size, from_config does not
+def uncompiled_copy(model):
+    copy = keras.Model.from_config(model.get_config())
+    copy.set_weights(model.get_weights())
+    return copy
+
+
 def save_without_optimizer(model, path):
-    clone = keras.models.clone_model(model)
-    clone.set_weights(model.get_weights())
-    clone.save(path)
+    uncompiled_copy(model).save(path)
     return path
 
 

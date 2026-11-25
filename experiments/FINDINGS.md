@@ -182,7 +182,8 @@ Training itself is not stuck. Validation in inference mode is.
 ### Other notes
 
 - GPU runs are not bit-for-bit reproducible with fixed seeds. Decisions use 5-seed means.
-- From Section 5 on, `model.keras` is kept only for the best seed per configuration and saved without optimizer state (user decision; Section 3 zip was 556 MB, 97 MB per baseline-family model). This changes rule 6 (`EXPERIMENT_LOG.md`, Run files).
+- From Section 5 on, `model.keras` is kept only for the best seed of the top 3 configurations by mean validation macro F1, and saved without optimizer state (user decision; Section 3 zip was 556 MB, 97 MB per baseline-family model). This changes rule 6 (`EXPERIMENT_LOG.md`, Run files).
+- In Keras 3.13, `clone_model` compiles the clone again and saves a fresh optimizer of the same size, so a clone does not drop optimizer state. An uncompiled copy from `Model.from_config` does (35% of the size). This stopped the first Section 5 version in the test step (`EXPERIMENT_LOG.md`, Run files, incident).
 - The baseline is now built by the same `build_cnn` function as R0. It has the same layers and parameter count as in Section 3, so the Section 3 baseline runs stay valid as the reference.
 
 ### Open questions

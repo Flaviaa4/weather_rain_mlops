@@ -15,8 +15,10 @@ from src import config, grids, metrics, run_report
 from src.preprocessing import list_labeled_files, load_split
 
 LOGGER = logging.getLogger("experiments")
+MODEL_FILE = "model.keras"
 RUN_FILES = ["config.json", "history.csv", "curves.png", "val_metrics.json", "confusion_matrix.png",
-             "val_predictions.csv", "model.keras"]
+             "val_predictions.csv"]
+KEEP_MODEL_CONFIGS = 3
 SMOKE_PER_CLASS = {"train": 8, "valid": 4}
 SMOKE_EPOCHS = 2
 OVERFIT_STEPS = 300
@@ -172,7 +174,7 @@ def save_run_artifacts(run_dir, run_id, record, history, val_metrics, probabilit
                                      f"{run_id}: validation, macro F1 {val_metrics['macro_f1']:.3f}")
     run_report.save_predictions(data["val_paths"], data["val_labels"], probabilities, run_dir / "val_predictions.csv")
     from src import model as model_lib
-    model_lib.save_without_optimizer(model, run_dir / "model.keras")
+    model_lib.save_without_optimizer(model, run_dir / MODEL_FILE)
     return run_dir
 
 
@@ -268,17 +270,47 @@ def best_run_id(rows):
     return rows.sort_values(["val_macro_f1", "val_loss"], ascending=[False, True])["run_id"].iloc[0]
 
 
-def prune_models(cfg, ctx):
+def section_rows(ctx):
     results = read_results(ctx["dir"])
-    rows = results[(results["config_hash"] == config_hash(cfg)) & (results["section"] == ctx["section"])]
-    if rows.empty:
-        return []
-    keep, removed = best_run_id(rows), []
-    for run_id in rows["run_id"]:
-        path = Path(ctx["dir"]) / "runs" / run_id / "model.keras"
-        if run_id != keep and path.exists():
+    return results if results.empty else results[results["section"] == ctx["section"]]
+
+
+def top_config_hashes(rows, top=KEEP_MODEL_CONFIGS):
+    stats = rows.groupby("config_hash")["val_macro_f1"].agg(["mean", "std"]).fillna(0.0)
+    return list(stats.sort_values(["mean", "std"], ascending=[False, True]).index[:top])
+
+
+def best_runs_of(rows, hashes):
+    return {best_run_id(rows[rows["config_hash"] == value]) for value in hashes}
+
+
+def delete_models(run_ids, ctx):
+    removed = []
+    for run_id in run_ids:
+        path = Path(ctx["dir"]) / "runs" / run_id / MODEL_FILE
+        if path.exists():
             path.unlink()
             removed.append(run_id)
+    return removed
+
+
+def prune_seed_models(cfg, ctx):
+    rows = section_rows(ctx)
+    rows = rows if rows.empty else rows[rows["config_hash"] == config_hash(cfg)]
+    if rows.empty:
+        return []
+    keep = best_run_id(rows)
+    return delete_models([run_id for run_id in rows["run_id"] if run_id != keep], ctx)
+
+
+def prune_models(ctx, top=KEEP_MODEL_CONFIGS):
+    rows = section_rows(ctx)
+    if rows.empty:
+        return []
+    keep = best_runs_of(rows, top_config_hashes(rows, top))
+    removed = delete_models([run_id for run_id in rows["run_id"] if run_id not in keep], ctx)
+    LOGGER.info("Models kept for the top %d configs by mean val macro F1: %s (%d removed)", top, ", ".join(sorted(keep)),
+                len(removed))
     return removed
 
 
@@ -292,8 +324,9 @@ def run_grid(configs, seeds, ctx):
             break
         row = run_one(cfg, seed, ctx)
         durations.append(row["minutes"])
-        prune_models(cfg, ctx)
+        prune_seed_models(cfg, ctx)
         log_progress(index, len(todo), row, estimate_total_time(len(todo) - index, float(np.mean(durations))))
+    prune_models(ctx)
     return len(durations)
 
 
@@ -379,11 +412,39 @@ def run_timing(ctx):
     return summary
 
 
-def check_run_artifacts(run_dir):
-    missing = [name for name in RUN_FILES if not (Path(run_dir) / name).exists()]
+def check_run_artifacts(run_dir, with_model=True):
+    required = RUN_FILES + ([MODEL_FILE] if with_model else [])
+    missing = [name for name in required if not (Path(run_dir) / name).exists()]
     if missing:
         raise RuntimeError(f"{run_dir} is missing {missing}")
     return True
+
+
+def kept_models(experiments_dir):
+    return sorted(Path(experiments_dir).glob(f"runs/*/{MODEL_FILE}"))
+
+
+def check_kept_models(ctx, n_configs):
+    expected = min(n_configs, KEEP_MODEL_CONFIGS)
+    found = len(kept_models(ctx["dir"]))
+    if found != expected:
+        raise RuntimeError(f"model pruning check failed: {found} model files kept, expected {expected}")
+    return found
+
+
+def folder_files(path):
+    return [item for item in Path(path).rglob("*") if item.is_file()]
+
+
+def log_folder_size(path):
+    files = folder_files(path)
+    sizes = {item: item.stat().st_size for item in files}
+    models = [item for item in files if item.name == MODEL_FILE]
+    LOGGER.info("Folder %s before zipping: %.1f MB in %d files, %d model files (%.1f MB)", path,
+                sum(sizes.values()) / 1e6, len(files), len(models), sum(sizes[item] for item in models) / 1e6)
+    largest = sorted(files, key=sizes.get, reverse=True)[:5]
+    LOGGER.info("Largest files: %s", ", ".join(f"{item.relative_to(path)} {sizes[item] / 1e6:.1f} MB" for item in largest))
+    return sum(sizes.values())
 
 
 def run_smoke(ctx):
@@ -392,7 +453,8 @@ def run_smoke(ctx):
     configs = grids.smoke_configs(ctx["section"])
     run_grid(configs, [config.SEEDS[0]], smoke_ctx)
     for cfg in configs:
-        check_run_artifacts(Path(smoke_ctx["dir"]) / "runs" / make_run_id(ctx["section"], cfg, config.SEEDS[0]))
+        check_run_artifacts(Path(smoke_ctx["dir"]) / "runs" / make_run_id(ctx["section"], cfg, config.SEEDS[0]), False)
+    check_kept_models(smoke_ctx, len(configs))
     if pending_runs(configs, [config.SEEDS[0]], smoke_ctx):
         raise RuntimeError("resume check failed: finished smoke runs are not skipped")
     run_overfit_check(smoke_ctx, steps=20)
@@ -441,10 +503,22 @@ def run_section(section, groups, data_dir, experiments_dir):
     setup_logging(experiments_dir, f"section{section}")
     ctx = {"section": section, "data_dir": Path(data_dir), "dir": Path(experiments_dir), "smoke": False,
            "backup": os.environ.get("USE_BACKUP") == "1", "deadline": section_deadline(section)}
+    try:
+        run_groups(section, groups, ctx)
+    finally:
+        finish_section(ctx)
+
+
+def run_groups(section, groups, ctx):
     for group in groups:
         LOGGER.info("Section %s, group %s: start", section, group)
         run_group(section, group, ctx)
         LOGGER.info("Section %s, group %s: done. %s", section, group, next_group_message(section, group))
+
+
+def finish_section(ctx):
+    prune_models(ctx)
+    return log_folder_size(ctx["dir"])
 
 
 def split_labels(split, data_dir):
