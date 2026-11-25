@@ -1,3 +1,4 @@
+import shutil
 import threading
 
 import onnx
@@ -115,3 +116,31 @@ def test_real_evaluation_on_validation_set(service_env, monkeypatch):
     run = run_and_wait()
     assert run["status"] == "completed", run["message"]
     assert run["promoted"] == retrain.should_promote(run["candidate_macro_f1"], run["current_macro_f1"])
+
+
+def test_empty_base_data_fails_with_a_clear_message(service_env, tmp_path, monkeypatch):
+    fake_training(monkeypatch)
+    empty = tmp_path / "fresh_clone_data"
+    monkeypatch.setattr(config, "DATA_DIR", empty)
+    report = retrain.base_data_report()
+    assert not report["ok"] and report["train"]["n_images"] == 0
+    assert f"base training data not found at {empty / 'train'}, 0 images" in report["problems"]
+    run = run_and_wait()
+    assert run["status"] == "failed" and run["message"].startswith("BaseDataMissing: base training data not found at")
+    assert "stack" not in run["message"] and not retrain.JOB_LOCK.locked()
+
+
+def test_a_class_without_images_is_reported(service_env):
+    shutil.rmtree(config.DATA_DIR / "valid" / "rainy")
+    report = retrain.base_data_report()
+    assert report["ok"] is False and report["problems"] == [
+        f"base validation data at {config.DATA_DIR / 'valid'} has no images for rainy"]
+    with pytest.raises(retrain.BaseDataMissing, match="no images for rainy"):
+        retrain.prepare_retraining_data(size=32)
+
+
+def test_auto_retrain_does_not_start_without_base_data(service_env, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "RETRAIN_AUTO", True)
+    monkeypatch.setattr(config, "RETRAIN_UPLOAD_THRESHOLD", 0)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "empty")
+    assert retrain.maybe_auto_retrain(lambda run_id: None) is None and database.list_runs(5) == []

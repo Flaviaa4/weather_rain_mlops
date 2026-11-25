@@ -7,9 +7,6 @@ __pycache__/
 *.log
 .DS_Store
 
-data/train/
-data/valid/
-data/test/
 data/quarantine/
 data/uploads/*
 !data/uploads/.gitkeep
@@ -19,12 +16,6 @@ models/archive/*
 locust/results/*.csv
 !locust/results/.gitkeep
 *.db
-data/train/
-data/valid/
-data/test/
-data/train/
-data/valid/
-data/test/
 data/quarantine/
 data/data.zip
 !experiments/colab_section*.log

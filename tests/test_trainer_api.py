@@ -72,3 +72,12 @@ def test_metrics_and_insights(client):
     insights = client.get("/insights").json()
     assert insights["class_counts"]["train"]["rainy"] == 3 and "test" not in insights["class_counts"]
     assert {"saturation", "sharpness"} <= set(insights["interpretations"]) and len(insights["stories"]) >= 3
+
+
+def test_health_reports_base_data(client, tmp_path, monkeypatch):
+    body = client.get("/health").json()
+    assert body["status"] == "ok" and body["base_data"]["ok"] and body["base_data"]["train"]["n_images"] == 12
+    monkeypatch.setattr(trainer_api.config, "DATA_DIR", tmp_path / "empty")
+    body = client.get("/health").json()
+    assert body["status"] == "degraded" and body["base_data"]["train"]["n_images"] == 0
+    assert any(problem.startswith("base training data not found at") for problem in body["base_data"]["problems"])

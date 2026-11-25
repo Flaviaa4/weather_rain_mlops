@@ -31,7 +31,7 @@ notebook/            weather_rain_classification.ipynb (Section 8), reads saved 
 src/                 config, preprocessing, model, prediction, retrain, database, uploads, insights,
                      placeholder, onnx_export, metrics, experiments, grids, run_report, eda, audit
 app/                 api.py, trainer_api.py, ui.py
-data/                train/ valid/ test/ (images, not in git), uploads/ (runtime)
+data/                train/ valid/ test/ (images, in git), uploads/ (runtime, not in git)
 models/              trained model files, archive/ (models replaced by a retrain)
 experiments/         EXPERIMENT_LOG.md, FINDINGS.md, results.csv, figures, audit
 docker/              Dockerfile.api, Dockerfile.trainer, Dockerfile.ui, nginx.conf
@@ -42,7 +42,7 @@ colab/ kaggle/       GPU launcher notebooks for the training sections
 requirements.txt     every package, pinned. Per service: requirements-api.txt, -trainer.txt, -ui.txt, -dev.txt
 ```
 
-Dataset: Roboflow "weather classification" (folder export). 997 images after the Section 1 duplicate cleanup: train 719, valid 144, test 134. The images are not committed. Put them in `data/train`, `data/valid`, `data/test`, one folder per class.
+Dataset: Roboflow "weather classification" (folder export). 997 images after the Section 1 duplicate cleanup: train 719, valid 144, test 134. The cleaned images are committed in `data/train`, `data/valid` and `data/test`, one folder per class (about 37 MB). `data/quarantine/` (the removed duplicates) and `data/uploads/` (runtime uploads) are not committed.
 
 ## Run locally without Docker
 
@@ -88,11 +88,7 @@ Platform: Docker on a Linux VM. Serverless platforms such as AWS Lambda are not 
    ```bash
    git clone https://github.com/Flaviaa4/weather_rain_mlops.git && cd weather_rain_mlops
    ```
-5. **Copy the images** (they are not in git). From your own machine:
-   ```bash
-   scp -r data/train data/valid <user>@<vm-ip>:~/weather_rain_mlops/data/
-   ```
-   The server does not need `data/test`.
+5. **Check the base images.** They are in git (`data/train`, `data/valid`, `data/test`, about 37 MB), so the clone already has them. Retraining needs `data/train` and `data/valid`: `curl http://<vm-ip>/trainer/health` (after step 6) shows `"base_data": {"ok": true, ...}` with the image counts, or `"status": "degraded"` and the missing path if they are absent.
 6. **Start everything:** `docker compose up -d --build`. The first build downloads TensorFlow for the trainer image and takes a few minutes.
 7. **Verify:** `curl http://<vm-ip>/health` returns `"status":"ok"`. Then open `http://<vm-ip>/` in a browser and predict one image.
 8. **Start on boot:** `sudo systemctl enable docker`. Every service has `restart: always`, so the containers come back after a reboot. Test it with `sudo reboot`, then run step 7 again.

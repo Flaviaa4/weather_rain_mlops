@@ -34,6 +34,15 @@ def bootstrap_placeholder():
         LOGGER.exception("Could not create the placeholder model")
 
 
+def log_base_data(report):
+    if report["ok"]:
+        LOGGER.info("Base data for retraining: train %d images, valid %d images", report["train"]["n_images"],
+                    report["valid"]["n_images"])
+    else:
+        LOGGER.error("Retraining is not possible: %s", "; ".join(report["problems"]))
+    return report
+
+
 @asynccontextmanager
 async def lifespan(_app):
     database.init_db()
@@ -41,6 +50,7 @@ async def lifespan(_app):
     if interrupted:
         LOGGER.warning("Marked %d unfinished retrain runs as interrupted", interrupted)
     bootstrap_placeholder()
+    log_base_data(retrain.base_data_report())
     yield
 
 
@@ -79,8 +89,9 @@ def with_auto_retrain(result):
 @app.get("/health")
 def health():
     database.query("SELECT 1")
-    return {"status": "ok", "database": "ok", "retrain_running": retrain.JOB_LOCK.locked(),
-            "tensorflow": tensorflow_available(), "hostname": HOSTNAME}
+    base_data = retrain.base_data_report()
+    return {"status": "ok" if base_data["ok"] else "degraded", "database": "ok", "retrain_running": retrain.JOB_LOCK.locked(),
+            "tensorflow": tensorflow_available(), "base_data": base_data, "hostname": HOSTNAME}
 
 
 @app.get("/uptime")

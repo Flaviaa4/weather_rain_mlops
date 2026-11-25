@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from src import config, database, prediction
-from src.preprocessing import load_split, preprocess_image_file
+from src.preprocessing import list_labeled_files, load_split, preprocess_image_file
 from src.run_report import save_json
 from src.uploads import upload_file_path
 
@@ -17,10 +17,48 @@ LOGGER = logging.getLogger("retrain")
 JOB_LOCK = threading.Lock()
 STATUS_LOCK = threading.Lock()
 STATUS = {"run_id": None, "stage": None, "started_at": None, "message": None}
+BASE_SPLITS = {"train": "training", "valid": "validation"}
 
 
 class RetrainRunning(Exception):
     pass
+
+
+class BaseDataMissing(RuntimeError):
+    pass
+
+
+def split_class_counts(split_dir):
+    labels = [label for _, label in list_labeled_files(split_dir)]
+    return {name: labels.count(index) for index, name in enumerate(config.CLASS_NAMES)}
+
+
+def base_data_status(data_dir=None):
+    data_dir = Path(data_dir or config.DATA_DIR)
+    return {split: {"path": str(data_dir / split), "per_class": split_class_counts(data_dir / split)} for split in BASE_SPLITS}
+
+
+def split_problem(split, info):
+    total, empty = sum(info["per_class"].values()), [name for name, count in info["per_class"].items() if count == 0]
+    if total == 0:
+        return f"base {BASE_SPLITS[split]} data not found at {info['path']}, {total} images"
+    return f"base {BASE_SPLITS[split]} data at {info['path']} has no images for {', '.join(empty)}" if empty else None
+
+
+def base_data_report(data_dir=None):
+    status = base_data_status(data_dir)
+    problems = [problem for split, info in status.items() if (problem := split_problem(split, info))]
+    splits = {split: {"path": info["path"], "n_images": sum(info["per_class"].values()), "per_class": info["per_class"]}
+              for split, info in status.items()}
+    return {"ok": not problems, "problems": problems, **splits}
+
+
+def check_base_data(data_dir=None):
+    report = base_data_report(data_dir)
+    if not report["ok"]:
+        raise BaseDataMissing("; ".join(report["problems"]) + ". Retraining needs data/train and data/valid, "
+                              "one folder per class, in the data folder mounted into the trainer.")
+    return report
 
 
 def model_paths():
@@ -86,6 +124,7 @@ def merge_training_data(base, uploads):
 
 def prepare_retraining_data(db_path=None, data_dir=None, uploads_dir=None, size=config.IMAGE_SIZE):
     data_dir = data_dir or config.DATA_DIR
+    check_base_data(data_dir)
     base = load_split("train", size, data_dir)
     uploads = load_upload_arrays(database.all_usable_uploads(db_path), size, uploads_dir)
     images, labels = merge_training_data(base, uploads)
@@ -224,8 +263,8 @@ def mark_uploads_after_run(run_id, data):
 def run_retraining(run_id):
     started = time.time()
     set_stage(run_id, "loading data")
-    ensure_base_model()
     data = prepare_retraining_data()
+    ensure_base_model()
     set_stage(run_id, "evaluating current model")
     current = evaluate_model_file(config.ONNX_PATH, data)
     set_stage(run_id, "training")
@@ -277,6 +316,10 @@ def start_retraining(trigger="manual", runner=None, wait=False):
 
 def maybe_auto_retrain(runner=None):
     if not config.RETRAIN_AUTO or JOB_LOCK.locked() or not should_retrain(database.count_unused_uploads()):
+        return None
+    base_data = base_data_report()
+    if not base_data["ok"]:
+        LOGGER.warning("Upload threshold reached but no retrain started: %s", base_data["problems"])
         return None
     try:
         return start_retraining("auto", runner)
