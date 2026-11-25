@@ -77,7 +77,7 @@ MAX_UPLOAD_MB = env_int("MAX_UPLOAD_MB", 10)
 MIN_FREE_DISK_MB = env_int("MIN_FREE_DISK_MB", 500)
 ONNX_THREADS = env_int("ONNX_THREADS", 1)
 
-MODEL_NAME = os.environ.get("MODEL_NAME", "placeholder_model")
+MODEL_NAME = os.environ.get("MODEL_NAME", "weather_cnn")
 IS_PLACEHOLDER = MODEL_NAME.startswith("placeholder")
 H5_PATH = MODELS_DIR / f"{MODEL_NAME}.h5"
 ONNX_PATH = MODELS_DIR / f"{MODEL_NAME}.onnx"

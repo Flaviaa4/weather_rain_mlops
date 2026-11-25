@@ -268,4 +268,20 @@ The three R0 arms do not differ (rule 2). The tie-break chose by 0.0004 of std, 
 - `notebook/weather_rain_classification.ipynb` runs top to bottom from saved results only (no TensorFlow, no GPU, about 1 minute) and is saved with its outputs. Tables and figures come from `src/notebook_views.py`.
 - It covers data acquisition and cleanup, every preprocessing step on a real image with shapes and value ranges, augmentation, the exploratory features, baseline against R0, the batch norm momentum stall, every Section 5 technique with its verdict, the selection rule, and validation accuracy, log loss, macro precision, recall and F1, ROC AUC, per-class precision and recall and confusion matrices.
 - The test set is not used. The final-model cells (test metrics with 95% intervals, per-class test results, test confusion matrix, ONNX parity, prediction demo with the ONNX model) read `models/metrics.json` and `models/weather_cnn.onnx` and print how to produce them until the Section 7 model is installed. They were checked on a scratch copy with a synthetic record.
-- Open: rerun the notebook after the Section 7 install so the test cells show real numbers. The playbook asks the notebook to retrain the final configuration; it does not, because training needs TensorFlow and a GPU and the final training runs in Section 7 on Kaggle.
+- Rerun after the Section 7 install (2026-11-25): 70 cells, 0 errors, the test cells show the real record. Section 7 rows are kept out of the Section 3 and 5 views because they reuse the selected config name. The playbook asks the notebook to retrain the final configuration; it does not, because training needs TensorFlow and a GPU and the final training runs in Section 7 on Kaggle.
+
+## Section 7: Final model on the locked test set (2026-11-25)
+
+- Model: `r0_patience30_min20` retrained with the 5 seeds on Kaggle. Seed 55 had the best validation macro F1 and is installed as `models/weather_cnn.h5`, `models/weather_cnn.onnx`, `models/class_names.json` and `models/metrics.json`. `MODEL_NAME` now defaults to `weather_cnn`.
+- Validation macro F1 0.962 for the chosen seed, 0.949 +- 0.008 over the 5 seeds. The chosen seed's number is optimistic: it is the best of 5 picked on validation.
+- **Test, evaluated once: macro F1 0.900 (95% CI 0.845 to 0.947), accuracy 0.903 (0.851 to 0.948).** Per-class F1: cloudy 0.820, rainy 0.918, shiny 0.877, sunrise 0.986. Rainy recall 0.966 (28 of 29).
+- ONNX parity on CPU: max probability difference 5.1e-7 on validation and 1.4e-6 on test, the same class for every image. The install step reproduced the validation macro F1 with ONNX Runtime locally.
+- The test score is 0.062 below the chosen seed and 0.043 below the 10-run validation mean of the configuration. Most of the drop comes from the seed pick, the small test set and shiny images called cloudy (6 of 40), the same ambiguity seen on validation. No decision changed and the test set is closed.
+- The validation number to compare against future retrains is still validation (the promotion rule never uses test).
+
+### Open questions
+
+15. All 5 Section 7 seeds scored above their Section 5 runs of the same config (mean +0.012). Chance (1 in 32) or a systematic difference between the two Kaggle sessions?
+16. Two confident test errors (`cloudy75` called sunrise at 0.999, `rain72` called cloudy at 0.997) may be label noise. A label check would be analysis only and could not change the model.
+17. A promoted retrain replaces `models/metrics.json` with a retrain record that has no `test` key. The test result stays in `experiments/final_model/metrics.json` and in `models/archive/`, but the notebook's test cells would then print the "not installed" message.
+

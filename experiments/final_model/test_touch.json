@@ -1,0 +1,7 @@
+{
+  "split": "test",
+  "run_id": "s7_r0_patience30_min20_seed55",
+  "n_images": 134,
+  "at": "2026-11-25T12:19:10+00:00",
+  "onnx_sha256": "31892c5c44df03e4dd3d049314c11e225509151554c58c18cab247bf86849c73"
+}

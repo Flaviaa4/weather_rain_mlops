@@ -107,3 +107,29 @@ def test_technique_table_on_saved_results():
     table = views.technique_table(views.load_results())
     assert len(table) == len(views.TECHNIQUES)
     assert table.loc["Batch norm momentum 0.9 (instead of 0.99)", "verdict"] == "better"
+
+
+def test_results_views_keep_the_final_section_apart(tmp_path, monkeypatch):
+    rows = [{"run_id": f"s{section}_m_seed{seed}", "section": section, "cfg_name": views.SELECTED_NAME, "seed": seed,
+             "val_macro_f1": score + seed / 1000} for section, score in [(5, 0.90), (7, 0.92)] for seed in [11, 22, 33]]
+    pd.DataFrame(rows).to_csv(tmp_path / "results.csv", index=False)
+    monkeypatch.setattr(config, "RESULTS_CSV", tmp_path / "results.csv")
+    assert set(views.load_results()["section"]) == {5} and len(views.load_all_results()) == 6
+    table = views.rerun_table(views.load_all_results())
+    assert list(table.index) == [11, 22, 33, "mean", "std"]
+    assert table.loc["mean", "section 7 minus section 5"] == pytest.approx(0.02)
+
+
+def test_final_record_falls_back_when_the_served_record_has_no_test(tmp_path):
+    served, kept = tmp_path / "models" / "metrics.json", tmp_path / "final_model" / "metrics.json"
+    assert views.load_final_record(served, kept) == (None, None)
+    kept.parent.mkdir()
+    kept.write_text(json.dumps(fake_record(), default=float))
+    served.parent.mkdir()
+    served.write_text(json.dumps({"model_name": "weather_cnn", "retrain_run": 3, "validation": {"macro_f1": 0.95}}))
+    record, source = views.load_final_record(served, kept)
+    assert source == kept and record["run_id"] == "s7_x_seed22"
+    assert "single Section 7 test evaluation" in views.record_source(source, served)
+    served.write_text(kept.read_text())
+    assert views.load_final_record(served, kept)[1] == served
+    assert "the model the API serves now" in views.record_source(served, served)

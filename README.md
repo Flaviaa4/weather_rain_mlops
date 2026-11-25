@@ -2,7 +2,7 @@
 
 Image classifier for four weather classes (cloudy, rainy, shiny, sunrise) that supports rain detection for a Rwanda climate use case. The model is a custom CNN trained from scratch (no transfer learning, no pretrained weights). The project covers the full MLOps loop: data audit, preprocessing, experiments, a prediction API, uploads and retraining with a trigger, a UI, Docker deployment on a cloud VM and a load test with Locust.
 
-> **Model status:** until the final model from Section 7 is trained, the services run a clearly named **placeholder model** (`models/placeholder_model.onnx`, random weights, about 30% accuracy, it predicts almost everything as sunrise). Every response and the UI say `is_placeholder: true`. See [Swapping in the real model](#swapping-in-the-real-model).
+> **Model status:** the services run the final model `weather_cnn` (Section 7, seed 55 of `r0_patience30_min20`). On the locked test set, evaluated once: **macro F1 0.900** (95% CI 0.845 to 0.947), accuracy 0.903, rainy recall 0.966. Validation macro F1 is 0.962, which is optimistic because the seed was the best of 5 picked on validation. Full record: [models/metrics.json](models/metrics.json). See [The final model](#the-final-model).
 
 Video demo: _link added in Section 14_. Live URL: _added after deployment_.
 
@@ -68,7 +68,7 @@ docker compose up -d --scale api=4        # more prediction containers
 ```
 
 - UI: `http://<host>/`. Prediction API docs: `http://<host>/docs`. Trainer API docs: `http://<host>/trainer/docs`.
-- On first start, the trainer creates the placeholder files (`.h5` and `.onnx`) if `MODEL_NAME` is still the placeholder. Until then, the api `/health` returns 503.
+- The model files are in the repository (`models/weather_cnn.h5`, `.onnx`, `class_names.json`, `metrics.json`), so the api is ready on first start. With `MODEL_NAME=placeholder_model` the trainer creates the placeholder files instead, and the api `/health` returns 503 until they exist.
 - Settings (environment or a `.env` file next to the compose file): `MODEL_NAME`, `PUBLIC_PORT`, `API_CPUS` (CPU limit per api container, default 1), `RETRAIN_AUTO`, `RETRAIN_UPLOAD_THRESHOLD` (default 40), `RETRAIN_MAX_EPOCHS` (default 10), `MIN_FREE_DISK_MB` (default 500).
 
 ## Deployment on a cloud VM (step by step)
@@ -132,12 +132,12 @@ REPLICAS="1 2 4" USERS="10 50 100" DURATION=3m bash locust/run_flood_test.sh
 
 For each api replica count, the script scales the api service and runs a 30 s warm-up that is discarded. It then runs a 3-minute measured run for each user count. It saves the Locust CSVs, the responses per container hostname and `docker stats`, and finally writes `locust/results/summary.md`, `summary.csv`, `latency_vs_replicas.png` and `throughput_vs_replicas.png`. The breaking point is the smallest user count where more than 1% of requests fail or p95 latency exceeds 2 s. The load is 90% `/predict` with validation images and 10% `/health`. Results: _added after the runs on the VM_.
 
-## Swapping in the real model
+## The final model
 
 All model paths come from `MODEL_NAME` in [src/config.py](src/config.py):
 
 ```python
-MODEL_NAME = os.environ.get("MODEL_NAME", "placeholder_model")
+MODEL_NAME = os.environ.get("MODEL_NAME", "weather_cnn")
 ```
 
 The final model is trained on Kaggle by Section 7 (`SECTION = 7`, `GROUP = "smoke,final"` in [kaggle/run_section.ipynb](kaggle/run_section.ipynb)). The group writes `weather_cnn.h5`, `weather_cnn.onnx`, `metrics.json` (with `validation` and `test` keys) and `class_names.json` to `experiments/final_model/` inside the results zip. Install them with:
@@ -146,4 +146,4 @@ The final model is trained on Kaggle by Section 7 (`SECTION = 7`, `GROUP = "smok
 python -m src.final_model --install experiments/incoming/section7
 ```
 
-The install step checks that the ONNX file is the one the test set was evaluated with, that ONNX parity passed, and that the ONNX model reproduces the recorded validation macro F1 on `data/valid`. Then it copies the four files into `models/`. After that, change the default above to `"weather_cnn"` (or set `MODEL_NAME=weather_cnn` in `.env`) and run `docker compose up -d`. Nothing else changes.
+The install step checks that the ONNX file is the one the test set was evaluated with, that ONNX parity passed, and that the ONNX model reproduces the recorded validation macro F1 on `data/valid`. Then it copies the four files into `models/`, where the api and the trainer read them. The copy in `experiments/final_model/` (with `test_touch.json` and the test predictions) stays as the record of the single test evaluation. A promoted retrain replaces the files in `models/` (the previous ones go to `models/archive/`), so `models/metrics.json` then holds the retrain record. Set `MODEL_NAME=placeholder_model` in `.env` only to test the services without the trained model.

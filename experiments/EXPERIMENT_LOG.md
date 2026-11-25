@@ -213,9 +213,38 @@ A collapsed seed is a run whose best epoch is 1 or 2 and that stopped at epoch 1
 - ONNX parity: maximum probability difference near 1e-6 (Keras on CPU against ONNX Runtime on CPU). Section 5 showed that GPU against CPU alone moves the probabilities by 1.5e-4, so parity is measured on CPU only.
 - Incident (2026-11-25, first Section 7 version): the version stopped in the test step before any training, so the locked test set was not loaded (the failing test uses a synthetic dataset). `test_final_export_writes_h5_and_onnx_with_parity` failed in `keras_probabilities` with "Trying to access resource conv2d_88/kernel located in device GPU:0 from device CPU:0". Cause: the run model was loaded on the default device (GPU:0), then `predict` ran under a CPU scope, so the CPU kernels had to read variables that live on the GPU. Fix: every Keras parity check (validation, test, and after install when TensorFlow is present) reloads the exported `weather_cnn.h5` inside `tf.device("/CPU:0")`, so its variables are created on the CPU, and predicts inside the same scope. Parity is now also measured on the shipped H5 file rather than the in-memory model. A mocked test checks the order (enter CPU scope, load H5, predict, leave) for every check, and a TensorFlow test builds a model under `/GPU:0` and runs the CPU parity on it. The real reload path gives a difference of 0.0 against the original model on Keras 3.13.2 with JAX locally; the GPU case itself can only be checked on Kaggle.
 
+### S7-E1 results (Kaggle T4, 2026-11-25, commit 2b96356, installed locally 2026-11-25)
+
+- Runs: 5 seeds of `r0_patience30_min20` (config hash d2450b51, the same as Section 5), 71 to 91 epochs, best epochs 41 to 61, about 2 minutes each. Validation macro F1 by seed: 11: 0.9526, 22: 0.9438, 33: 0.9406, 44: 0.9467, 55: 0.9619. Mean 0.9491 +- 0.0084, worst 0.9406.
+- Selected model: seed 55 (`s7_r0_patience30_min20_seed55`), the best validation macro F1 of the 5. Exported with `tf2onnx.convert.from_keras`.
+- Validation (144 images, seed 55): macro F1 0.962, accuracy 0.965, macro precision 0.966, macro recall 0.959, log loss 0.144, ROC AUC 0.998. Per-class F1: cloudy 0.980, rainy 0.950, shiny 0.952, sunrise 0.966.
+- Test (134 images, evaluated once, bootstrap 95% CI from 2000 draws): macro F1 0.900 (0.845 to 0.947), accuracy 0.903 (0.851 to 0.948), macro precision 0.900, macro recall 0.907, log loss 0.303, ROC AUC 0.982. Per-class F1: cloudy 0.820 (0.696 to 0.912), rainy 0.918 (0.833 to 0.983), shiny 0.877 (0.790 to 0.950), sunrise 0.986 (0.953 to 1.000). Rainy recall 0.966 (28 of 29), rainy precision 0.875.
+- Test confusion (rows true, columns predicted, order cloudy, rainy, shiny, sunrise): cloudy 25, 2, 1, 1; rainy 1, 28, 0, 0; shiny 6, 2, 32, 0; sunrise 0, 0, 0, 36. 13 errors, 8 of them shiny images (6 called cloudy, 2 called rainy).
+- ONNX parity (Keras on CPU from the reloaded H5 against ONNX Runtime on CPU): validation 144 images, max difference 5.1e-7; test 134 images, max difference 1.4e-6; same predicted class for every image. Both passed (tolerance 1e-4).
+- Install check (local, 2026-11-25): the ONNX file matches the sha256 recorded when the test set was evaluated, the record has validation and test keys and passed parity, and ONNX Runtime on the local `data/valid` reproduces the recorded validation macro F1 (0.96187, difference below 1e-4). The Keras parity after install was skipped because TensorFlow is not installed locally.
+- Validation is optimistic: seed 55 was picked on validation as the best of 5 seeds, so its 0.962 is the top of 5 draws. The pick alone adds about 0.013 over the 5-seed mean (0.949). The test number is the estimate to report.
+
+Hypothesis check:
+- Validation macro F1 of the chosen seed about 0.94: wrong, it was 0.962. All 5 Section 7 seeds scored above their Section 5 runs (mean +0.012, see the surprise below).
+- Test macro F1 between 0.90 and 0.95: right, but only just (0.9002).
+- Bootstrap interval about +-0.04: a little wider, -0.055 to +0.047.
+- Rainy test F1 0.90 or more with an interval about +-0.07: right (0.918, 0.833 to 0.983).
+- Shiny weakest: partly right. Shiny has the lowest test recall (0.80), and its errors make cloudy the class with the lowest F1 (precision 0.78).
+- ONNX parity near 1e-6: right.
+- "A test score more than 0.05 below validation would be investigated": test is 0.062 below the chosen seed, so it was investigated, from the saved test predictions only (nothing was evaluated again):
+  - Against the 5-seed validation mean the gap is 0.049, and against the 10-run mean over Sections 5 and 7 (0.943 +- 0.009) it is 0.043. The test interval (0.845 to 0.947) contains 0.943.
+  - The errors repeat the validation pattern: shiny predicted cloudy is the largest error on both splits (2 of 33 on validation, 6 of 40 on test), the ambiguity of white clouds on blue sky seen in the Section 5 gallery and the Section 1 label review. The test split has more shiny images than validation (40 against 33).
+  - Wrong test predictions are much less confident than right ones (median 0.76 against 0.996), and 5 of the 13 are below 0.6, which the API flags as uncertain. Two are confident errors: `cloudy75` called sunrise at 0.999 and `rain72` called cloudy at 0.997. Their images were not opened.
+  - Leakage would push test up, not down, and cross-split duplicates were removed in Section 1.
+- Conclusion: the gap is explained by the optimistic seed pick, the small test set (an interval about 0.10 wide) and the cloudy and shiny ambiguity. No decision changes, and the test set is not used again.
+
+Surprise: Section 7 ran the same configuration hash, seeds, TensorFlow 2.21.0 and T4 GPU as Section 5, but every seed scored higher (11: +0.016, 22: +0.010, 33: +0.007, 44: +0.012, 55: +0.018). The epoch-1 validation loss agrees to about 3 decimals (seed 55: 1.1643 against 1.1645), then the runs drift apart. GPU kernels are not deterministic, so each run is a new draw, but all 5 going the same way happens 1 time in 32 by chance. Not explained; logged as an open question in FINDINGS. It does not affect the selection, which was fixed before Section 7.
+
 ## Test set touches
 
 | date | section | what | by |
 |---|---|---|---|
 | 2026-11-22 | 1 | Data audit only: file properties, duplicate detection, quarantine of 31 duplicate test copies. No model was evaluated. | Claude Code |
 | 2026-11-24 | 2 | File counts per class only, for `class_distribution.png`. No image features, no model. | Claude Code |
+| 2026-11-25 | 7 | Final model `s7_r0_patience30_min20_seed55` evaluated once on all 134 test images inside `src/final_model.py` on Kaggle (12:19:10 UTC, guard file `experiments/final_model/test_touch.json`, ONNX sha256 31892c5c...). Metrics, bootstrap CI and ONNX parity written to `metrics.json`. The smoke run before it used the valid split as its stand-in test split, not the test set. | Kaggle job |
+| 2026-11-25 | 7 | Local install: read the saved test record and predictions to write up S7-E1. No model was run on test images and no image was opened. | Claude Code |

@@ -1,7 +1,7 @@
 name: weather_rain_mlops
 
 x-model-env: &model-env
-  MODEL_NAME: ${MODEL_NAME:-placeholder_model}
+  MODEL_NAME: ${MODEL_NAME:-weather_cnn}
   DATA_DIR: /app/data
   MODELS_DIR: /app/models
   EXPERIMENTS_DIR: /app/experiments

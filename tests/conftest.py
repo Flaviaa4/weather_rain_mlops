@@ -65,6 +65,8 @@ def point_config_at(monkeypatch, data_dir, models_dir):
              "EDA_FEATURES_CSV": data_dir / "no_eda_features.csv"}
     for name, value in paths.items():
         monkeypatch.setattr(config, name, value)
+    monkeypatch.setattr(config, "MODEL_NAME", "placeholder_model")
+    monkeypatch.setattr(config, "IS_PLACEHOLDER", True)
     monkeypatch.setattr(config, "MIN_FREE_DISK_MB", 0)
     monkeypatch.setattr(config, "RETRAIN_AUTO", False)
     monkeypatch.setenv("BOOTSTRAP_PLACEHOLDER", "0")

@@ -15,7 +15,9 @@ SELECTED_NAME, BASELINE_NAME = "r0_patience30_min20", "baseline"
 SELECTED_COLOR, BASELINE_COLOR = "#2a78d6", "#eb6834"
 CHANNEL_COLORS = {"red": "#eb6834", "green": "#1baf7a", "blue": "#2a78d6"}
 STEPS_PER_EPOCH = 23
+EXPERIMENT_SECTIONS, FINAL_SECTION = [3, 5], 7
 FINAL_METRICS_PATH = config.MODELS_DIR / "metrics.json"
+FINAL_RECORD_PATH = config.EXPERIMENTS_DIR / "final_model" / "metrics.json"
 FINAL_ONNX_PATH = config.MODELS_DIR / "weather_cnn.onnx"
 METRIC_NAMES = ["accuracy", "loss", "macro_precision", "macro_recall", "macro_f1", "roc_auc_macro"]
 TECHNIQUES = [
@@ -102,8 +104,26 @@ def plot_preprocessing(images):
     return finish(figure)
 
 
-def load_results():
+def load_all_results():
     return pd.read_csv(config.RESULTS_CSV)
+
+
+# Section 7 retrains the selected config under the same name, so its rows must not join the Section 5 seed statistics
+def load_results():
+    results = load_all_results()
+    return results[results["section"].isin(EXPERIMENT_SECTIONS)]
+
+
+def with_mean_and_std(table):
+    return pd.concat([table, pd.DataFrame([table.mean(), table.std()], index=["mean", "std"])])
+
+
+def rerun_table(all_results, name=SELECTED_NAME):
+    rows = all_results[(all_results["cfg_name"] == name) & all_results["section"].isin([5, FINAL_SECTION])]
+    table = rows.pivot_table(index="seed", columns="section", values="val_macro_f1")
+    table.columns = [f"section {section} val macro F1" for section in table.columns]
+    table["section 7 minus section 5"] = table.iloc[:, -1] - table.iloc[:, 0]
+    return with_mean_and_std(table).round(4)
 
 
 def summary(results, names):
@@ -279,8 +299,30 @@ def load_final_metrics(path=FINAL_METRICS_PATH):
     return record if "test" in record and "validation" in record else None
 
 
+# a promoted retrain replaces models/metrics.json with a record without a test section, the Section 7 record stays
+def load_final_record(served=FINAL_METRICS_PATH, kept=FINAL_RECORD_PATH):
+    for path in [served, kept]:
+        record = load_final_metrics(path)
+        if record is not None:
+            return record, Path(path)
+    return None, None
+
+
+def display_path(path):
+    path = Path(path).resolve()
+    return path.relative_to(config.ROOT_DIR).as_posix() if path.is_relative_to(config.ROOT_DIR) else str(path)
+
+
+def record_source(source, served=FINAL_METRICS_PATH):
+    if Path(source).resolve() == Path(served).resolve():
+        return f"Source: {display_path(source)}, the record of the model the API serves now."
+    return (f"Source: {display_path(source)}, the record of the single Section 7 test evaluation. "
+            f"{display_path(served)} has no test section, for example after a promoted retrain, so the served model "
+            "may differ from the one these test numbers describe.")
+
+
 def final_model_missing():
-    return (f"{FINAL_METRICS_PATH} is not installed yet. Run Section 7 on Kaggle (SECTION = 7, GROUP = \"smoke,final\"), "
+    return (f"No test record in {display_path(FINAL_METRICS_PATH)} or {display_path(FINAL_RECORD_PATH)}. Run Section 7 on Kaggle (SECTION = 7, GROUP = \"smoke,final\"), "
             "then python -m src.final_model --install experiments/incoming/section7, and run this notebook again.")
 
 

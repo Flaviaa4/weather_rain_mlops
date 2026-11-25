@@ -1,0 +1,248 @@
+{
+  "model_name": "weather_cnn",
+  "version": "weather_cnn_s7_smoke_final_seed11",
+  "created_at": "2026-11-25T12:09:00+00:00",
+  "run_id": "s7_smoke_final_seed11",
+  "seed": 11,
+  "config": {
+    "name": "smoke_final",
+    "architecture": "cnn",
+    "blocks": 3,
+    "base_filters": 32,
+    "convs_per_block": 2,
+    "batch_norm": true,
+    "dropout": 0.3,
+    "l2": 0.0001,
+    "pooling": "gap",
+    "dense_units": 128,
+    "optimizer": "adam",
+    "learning_rate": 0.001,
+    "weight_decay": 0.0,
+    "batch_size": 32,
+    "image_size": 128,
+    "augment": "medium",
+    "class_weights": true,
+    "oversample": false,
+    "lr_schedule": true,
+    "label_smoothing": 0.0,
+    "shuffle_labels": false,
+    "train_fraction": 1.0,
+    "max_epochs": 2,
+    "early_stop_patience": 30,
+    "min_epochs": 20
+  },
+  "config_hash": "6f1eb511",
+  "selection": {
+    "seeds": 1,
+    "val_macro_f1_mean": 0.1,
+    "val_macro_f1_std": NaN,
+    "val_macro_f1_min": 0.1,
+    "val_macro_f1_max": 0.1,
+    "run_ids": [
+      "s7_smoke_final_seed11"
+    ]
+  },
+  "dataset": {
+    "train": {
+      "n_images": 719,
+      "sha256": "058d0e22a20e1466ff068a0cb4cac4aeb420ba0cbc190ca654fd28cc7a59c31c"
+    },
+    "valid": {
+      "n_images": 144,
+      "sha256": "30ba7b145a79027000430c45401f48c14ccfe80ba0279cdb2d8ecac68fc7bd08"
+    },
+    "test": {
+      "n_images": 134,
+      "sha256": "eb00658cb16f17ce5993e6d0d5546296f26ba18cba327665dc6cc68b7e29db4f"
+    }
+  },
+  "export_method": "from_keras",
+  "runtime": {
+    "tf_version": "2.21.0",
+    "gpu": "Tesla T4"
+  },
+  "class_names": [
+    "cloudy",
+    "rainy",
+    "shiny",
+    "sunrise"
+  ],
+  "parity": {
+    "validation": {
+      "n_images": 144,
+      "max_abs_diff": 4.470348358154297e-08,
+      "same_class_share": 1.0,
+      "tolerance": 0.0001,
+      "min_images": 20,
+      "passed": true
+    },
+    "test": {
+      "n_images": 144,
+      "max_abs_diff": 4.470348358154297e-08,
+      "same_class_share": 1.0,
+      "tolerance": 0.0001,
+      "min_images": 20,
+      "passed": true
+    }
+  },
+  "validation": {
+    "accuracy": 0.3333333333333333,
+    "loss": 1.3757225960776438,
+    "macro_precision": 0.08333333333333333,
+    "macro_recall": 0.25,
+    "macro_f1": 0.125,
+    "roc_auc_macro": 0.7241731243263774,
+    "per_class": {
+      "cloudy": {
+        "precision": 0.3333333333333333,
+        "recall": 1.0,
+        "f1": 0.5,
+        "support": 48,
+        "roc_auc": 0.5909288194444444
+      },
+      "rainy": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 20,
+        "roc_auc": 0.44798387096774195
+      },
+      "shiny": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 33,
+        "roc_auc": 0.9137319137319138
+      },
+      "sunrise": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 43,
+        "roc_auc": 0.9440478931614091
+      }
+    },
+    "confusion_matrix": [
+      [
+        48,
+        0,
+        0,
+        0
+      ],
+      [
+        20,
+        0,
+        0,
+        0
+      ],
+      [
+        33,
+        0,
+        0,
+        0
+      ],
+      [
+        43,
+        0,
+        0,
+        0
+      ]
+    ],
+    "split": "valid"
+  },
+  "test": {
+    "accuracy": 0.3333333333333333,
+    "loss": 1.3757225960776438,
+    "macro_precision": 0.08333333333333333,
+    "macro_recall": 0.25,
+    "macro_f1": 0.125,
+    "roc_auc_macro": 0.7241731243263774,
+    "per_class": {
+      "cloudy": {
+        "precision": 0.3333333333333333,
+        "recall": 1.0,
+        "f1": 0.5,
+        "support": 48,
+        "roc_auc": 0.5909288194444444
+      },
+      "rainy": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 20,
+        "roc_auc": 0.44798387096774195
+      },
+      "shiny": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 33,
+        "roc_auc": 0.9137319137319138
+      },
+      "sunrise": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 43,
+        "roc_auc": 0.9440478931614091
+      }
+    },
+    "confusion_matrix": [
+      [
+        48,
+        0,
+        0,
+        0
+      ],
+      [
+        20,
+        0,
+        0,
+        0
+      ],
+      [
+        33,
+        0,
+        0,
+        0
+      ],
+      [
+        43,
+        0,
+        0,
+        0
+      ]
+    ],
+    "split": "valid"
+  },
+  "test_bootstrap_95ci": {
+    "draws": 2000,
+    "seed": 11,
+    "accuracy": [
+      0.2569444444444444,
+      0.4097222222222222
+    ],
+    "macro_f1": [
+      0.10220994475138122,
+      0.14532019704433496
+    ],
+    "per_class_f1": {
+      "cloudy": [
+        0.4088397790055249,
+        0.5812807881773399
+      ],
+      "rainy": [
+        0.0,
+        0.0
+      ],
+      "shiny": [
+        0.0,
+        0.0
+      ],
+      "sunrise": [
+        0.0,
+        0.0
+      ]
+    }
+  }
+}

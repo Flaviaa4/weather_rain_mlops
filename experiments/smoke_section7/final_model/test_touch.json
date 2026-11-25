@@ -1,0 +1,7 @@
+{
+  "split": "valid",
+  "run_id": "s7_smoke_final_seed11",
+  "n_images": 144,
+  "at": "2026-11-25T12:08:57+00:00",
+  "onnx_sha256": "5ce953fe7deb39acc9d440be5624422811a454375d0a79264c0ba2eb96db5020"
+}
