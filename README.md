@@ -26,7 +26,8 @@ Video demo: _link added in Section 14_. Live URL: _added after deployment_.
 
 ```
 README.md
-notebook/            weather_rain_classification.ipynb (Section 8)
+notebook/            weather_rain_classification.ipynb (Section 8), reads saved results, no GPU needed:
+                     jupyter execute --inplace notebook/weather_rain_classification.ipynb
 src/                 config, preprocessing, model, prediction, retrain, database, uploads, insights,
                      placeholder, onnx_export, metrics, experiments, grids, run_report, eda, audit
 app/                 api.py, trainer_api.py, ui.py

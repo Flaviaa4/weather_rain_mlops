@@ -139,11 +139,10 @@ def test_save_without_optimizer_predicts_the_same_and_is_not_larger(tmp_path):
     assert sizes[0] <= sizes[1]
 
 
-def test_final_export_writes_h5_and_onnx_with_parity(tmp_path):
+def test_final_export_writes_h5_and_onnx_with_parity(tmp_path, make_tiny_dataset):
     import shutil
     from src import final_model
-    from tests.conftest import write_tiny_dataset
-    data_dir = write_tiny_dataset(tmp_path / "data", per_class=6)
+    data_dir = make_tiny_dataset(tmp_path / "data", per_class=6)
     shutil.copytree(data_dir / "valid", data_dir / "test")
     ctx = {"section": 7, "group": "test", "data_dir": data_dir, "dir": tmp_path / "exp", "smoke": True, "backup": False}
     cfg = small(grids.final_config())

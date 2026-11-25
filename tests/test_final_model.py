@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 
 from src import experiments, final_model, grids, selection
-from tests.conftest import write_tiny_dataset
 
 pytest.importorskip("onnxruntime")
 SIZE = 32
@@ -39,8 +38,8 @@ def fake_export(model, paths, run_id):
 
 
 @pytest.fixture
-def final_ctx(tmp_path, monkeypatch):
-    data_dir = write_tiny_dataset(tmp_path / "data", per_class=6)
+def final_ctx(tmp_path, monkeypatch, make_tiny_dataset):
+    data_dir = make_tiny_dataset(tmp_path / "data", per_class=6)
     shutil.copytree(data_dir / "valid", data_dir / "test")
     cfg = {**grids.final_config(), "image_size": SIZE}
     ctx = {"section": 7, "dir": tmp_path / "experiments", "data_dir": data_dir, "smoke": False}
@@ -81,8 +80,8 @@ def test_bootstrap_interval_contains_estimate_and_is_reproducible():
     assert perfect["accuracy"] == [1.0, 1.0] and perfect["per_class_f1"]["rainy"] == [1.0, 1.0]
 
 
-def test_dataset_fingerprint_changes_when_an_image_changes(tmp_path):
-    data_dir = write_tiny_dataset(tmp_path / "data")
+def test_dataset_fingerprint_changes_when_an_image_changes(tmp_path, make_tiny_dataset):
+    data_dir = make_tiny_dataset(tmp_path / "data")
     before = final_model.dataset_fingerprint(data_dir)
     assert set(before) == {"train", "valid"} and before["valid"]["n_images"] == 12
     assert final_model.dataset_fingerprint(data_dir) == before

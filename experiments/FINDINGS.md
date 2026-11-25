@@ -262,3 +262,10 @@ The three R0 arms do not differ (rule 2). The tie-break chose by 0.0004 of std, 
 12. Does r0_patience30_min20 hold up on the locked test set (S7-E1)? Section 7 group `final`.
 13. Would momentum 0.9 together with the later stopping rule reduce cost without a loss? Not needed for the decision.
 14. K-fold over train plus valid was not run. The validation split (144 images, 20 rainy) cannot resolve differences of 0.004.
+
+## Section 8: Notebook (draft, 2026-11-25)
+
+- `notebook/weather_rain_classification.ipynb` runs top to bottom from saved results only (no TensorFlow, no GPU, about 1 minute) and is saved with its outputs. Tables and figures come from `src/notebook_views.py`.
+- It covers data acquisition and cleanup, every preprocessing step on a real image with shapes and value ranges, augmentation, the exploratory features, baseline against R0, the batch norm momentum stall, every Section 5 technique with its verdict, the selection rule, and validation accuracy, log loss, macro precision, recall and F1, ROC AUC, per-class precision and recall and confusion matrices.
+- The test set is not used. The final-model cells (test metrics with 95% intervals, per-class test results, test confusion matrix, ONNX parity, prediction demo with the ONNX model) read `models/metrics.json` and `models/weather_cnn.onnx` and print how to produce them until the Section 7 model is installed. They were checked on a scratch copy with a synthetic record.
+- Open: rerun the notebook after the Section 7 install so the test cells show real numbers. The playbook asks the notebook to retrain the final configuration; it does not, because training needs TensorFlow and a GPU and the final training runs in Section 7 on Kaggle.

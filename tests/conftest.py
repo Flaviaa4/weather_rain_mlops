@@ -33,6 +33,12 @@ def tiny_dataset(tmp_path):
     return write_tiny_dataset(tmp_path / "data")
 
 
+# a fixture, not an import: Kaggle has an unrelated "tests" package that shadows "from tests.conftest import"
+@pytest.fixture
+def make_tiny_dataset():
+    return write_tiny_dataset
+
+
 @pytest.fixture
 def gradient_image():
     return gradient()
