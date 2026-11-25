@@ -197,3 +197,68 @@ Training itself is not stuck. Validation in inference mode is.
 ### Section 5 plan (first Kaggle version)
 
 Written in `EXPERIMENT_LOG.md` before any run, with the selection rule: highest mean validation macro F1 over 5 seeds, ties within one std go to the lower std, and the worst seed must be 0.85 or more. Groups: A batch norm momentum 0.9 and 0.8, B patience 30 with at least 20 epochs, C ablation from the baseline (3 seeds), D learning rate 3e-4, 5-epoch warmup, light augmentation. Budget guard: no new run after 50 minutes of the experiment process.
+
+## Section 5: Fix the R0 stall, measure each optimization
+
+Kaggle T4 (one device), TensorFlow 2.21.0, 2026-11-25, one version: 144 tests passed, then smoke, timing and groups A to D, 48 runs, 49 minutes of training, about 56 minutes in total. Validation only, the test set was not touched. Details and hypothesis outcomes: Section 5 results in `EXPERIMENT_LOG.md`. Decision: `DECISION.md`.
+
+### Selection (rule fixed before running)
+
+`python -m src.selection --section 3 --section 5` selects **r0_patience30_min20**: validation macro F1 **0.937 +- 0.004** (5 seeds), worst seed **0.934**, rainy F1 0.965 (min 0.950).
+
+Ranking of the eligible configurations (5 seeds, worst seed at least 0.85):
+
+| rank by mean | configuration | macro F1 mean +- std | worst seed | tie with the top mean? |
+|---|---|---|---|---|
+| 1 | r0_bn_momentum_0.9 | 0.940 +- 0.005 | 0.934 | top |
+| 2 | r0_patience30_min20 | 0.937 +- 0.004 | 0.934 | yes (0.0035 below, std 0.0046), lowest std, **selected** |
+| 3 | r0_bn_momentum_0.8 | 0.936 +- 0.018 | 0.910 | yes (0.0039 below, std 0.0181) |
+| 4 | baseline (Section 3) | 0.908 +- 0.027 | 0.872 | no (0.0323 below, std 0.0271) |
+
+The three R0 arms do not differ (rule 2). The tie-break chose by 0.0004 of std, and the playbook tie-break (rainy F1 std) agrees. r0_bn_momentum_0.9 is the cheaper equivalent (49 against 73 epochs) and the fallback.
+
+### Batch norm momentum is the whole R0 story
+
+- Every collapse in Sections 3 and 5 is at batch norm momentum 0.99 with patience 15 and no minimum epoch count: 12 of 23 such runs. At momentum 0.9 or 0.8: 0 of 10. At 0.99 with patience 30 and no stop before epoch 21: 0 of 5.
+- With 23 steps per epoch, the moving statistics at 0.99 still hold most of their initial values for several epochs. Validation loss in inference mode inflates (peaks of 2.6 to 6.0 at epochs 5 to 11) while training accuracy climbs smoothly, and early stopping restores the epoch 1 or 2 weights. At momentum 0.9 the validation loss follows training from epoch 2 (seed 22: 0.75 against 1.40 at 0.99).
+- Converged seeds land at 0.93 to 0.96 whatever the arm, so learning rate, warmup and augmentation strength do not change the converged level.
+- Converged R0 beats the vanilla baseline by about 0.03, more than one baseline std, with 27 times fewer parameters (305k against 8.4M) and a 6 times smaller std.
+
+### Seed collapses
+
+| configuration | collapsed seeds | what happened |
+|---|---|---|
+| r0_lr3e-4 | seed 22 (1 of 5) | best epoch 2, stopped at 17, macro F1 0.125: every validation image predicted cloudy. The other 4 seeds give 0.928 +- 0.009. |
+| r0_warmup5 | seed 22 (1 of 5) | same pattern, macro F1 0.125, all cloudy. The other 4 seeds give 0.940 +- 0.013. |
+| r0_augment_light | seeds 11, 22, 33, 44 (4 of 5) | best epoch 1, stopped at 16, macro F1 0.23 to 0.45, rainy F1 0 in all four. Seed 55 converged to 0.956, the best single run of the section. |
+| baseline_plus_batch_norm | all 3 | best epoch 1 or 2, stopped at 16 or 17, macro F1 0.44 to 0.60 |
+
+- All of them are the same race as R0 in Section 3, not a new failure. Validation accuracy was still rising when they stopped (0.53 to 0.72), and the restored weights score 0.26 to 0.66 in inference mode on their own training images.
+- A lower learning rate or a warmup does not fix the lag, which depends on the number of steps. They only change which seeds lose the race. Seed 22 collapsed in all four R0 arms at momentum 0.99, and seed 55 converged in all four. With 5 seeds, the 4 of 5 for light augmentation is not evidence that light augmentation is worse.
+
+### Group C: single-technique ablations from the baseline
+
+3 seeds each (11, 22, 33), so none of them is eligible for selection. They are compared with the Section 3 baseline, 0.908 +- 0.027.
+
+| technique added to the baseline | macro F1 mean +- std | difference | verdict (rule 2) |
+|---|---|---|---|
+| medium augmentation | 0.905 +- 0.010 | -0.003 | no difference, best epoch 1.8 times later |
+| class weights | 0.900 +- 0.015 | -0.008 | no difference |
+| L2 1e-4 | 0.894 +- 0.011 | -0.014 | no difference |
+| dropout 0.3 | 0.891 +- 0.004 | -0.017 | no difference |
+| global average pooling (28k parameters) | 0.860 +- 0.050 | -0.048 | no difference by the rule (just inside one std), best epoch about 9 times later |
+| batch norm (momentum 0.99) | 0.547 +- 0.090 | -0.361 | clear drop, all 3 seeds collapse |
+
+- No single technique improves the vanilla CNN. The gain of converged R0 comes from the combination (deeper 3-block network, global average pooling instead of an 8.4M flatten head, batch norm, regularization), not from one switch.
+- Batch norm on its own breaks the baseline at momentum 0.99, the same lag as R0.
+
+### Notes
+
+- The pruning kept 3 models (1.3 MB each, saved without optimizer state), and the zip was 13.1 MB.
+- Keras predictions of the kept seed 55 model, recomputed on CPU with Keras 3.13.2, reproduce its validation macro F1 exactly (0.9440), with a maximum probability difference of 1.5e-4 against the Kaggle GPU predictions. GPU against CPU alone moves probabilities by about 1e-4, so the Section 7 ONNX parity check compares CPU with CPU.
+
+### Open questions
+
+12. Does r0_patience30_min20 hold up on the locked test set (S7-E1)? Section 7 group `final`.
+13. Would momentum 0.9 together with the later stopping rule reduce cost without a loss? Not needed for the decision.
+14. K-fold over train plus valid was not run. The validation split (144 images, 20 rainy) cannot resolve differences of 0.004.

@@ -167,6 +167,51 @@ From Section 5 on (user decision, 2026-11-25), `model.keras` is kept only for th
 
 Incident (2026-11-25, first Section 5 version): the version stopped in the test step before any training. 139 passed, 2 skipped, 1 failed: `test_save_without_optimizer_is_smaller_and_predicts_the_same`. Predictions matched, but the file without optimizer was 3,772,746 bytes against 3,773,671 with it. Cause, read in the Keras 3.13.2 source and reproduced locally on Keras 3.13.2 with the JAX backend (3,772,625 against 3,773,500 bytes): `keras.models.clone_model` compiles the clone again from the original's compile config (`models/cloning.py`). `compile_from_config` then builds a fresh Adam whose zero-filled slots are saved, so the clone file is just as large. `include_optimizer` is ignored for `.keras` files. Fix: save an uncompiled copy made with `keras.Model.from_config` plus `set_weights`. On the same check it gives 1,317,328 bytes (35%), loads uncompiled and predicts the same. The test now asserts equal predictions and only the weak invariant (size without optimizer at most the size with it), and prints both sizes. Worst-case zip: 3 baseline-family models of about 34 MB plus about 15 MB of other files, about 120 MB. It stays near 320 MB even if the optimizer state came back. The notebook does not set `USE_BACKUP`, so no checkpoint is left behind.
 
+## Section 5 results (Kaggle T4, 2026-11-25, commit 32d0c7b)
+
+One version: 144 tests passed, smoke, timing, groups A to D, 48 runs, 49 minutes of training, about 56 minutes in total. No run was cut by the budget guard. The zip held 13.1 MB with 3 kept models of 1.3 MB. Merged into `results.csv` (11 Section 3 rows unchanged, 48 Section 5 rows added). Validation only.
+
+| config | seeds | macro F1 mean +- std | min | rainy F1 mean (min) | best epoch mean | collapsed seeds |
+|---|---|---|---|---|---|---|
+| r0_bn_momentum_0.9 | 5 | 0.940 +- 0.005 | 0.934 | 0.974 (0.947) | 33.8 | 0 |
+| r0_patience30_min20 | 5 | 0.937 +- 0.004 | 0.934 | 0.965 (0.950) | 43.4 | 0 |
+| r0_bn_momentum_0.8 | 5 | 0.936 +- 0.018 | 0.910 | 0.971 (0.927) | 39.6 | 0 |
+| r0_warmup5 | 5 | 0.777 +- 0.365 | 0.125 | 0.771 (0.000) | 32.4 | 1 (seed 22) |
+| r0_lr3e-4 | 5 | 0.767 +- 0.359 | 0.125 | 0.760 (0.000) | 30.8 | 1 (seed 22) |
+| r0_augment_light | 5 | 0.481 +- 0.278 | 0.233 | 0.200 (0.000) | 15.6 | 4 (seeds 11, 22, 33, 44) |
+| baseline_plus_augment | 3 | 0.905 +- 0.010 | 0.894 | 0.946 (0.889) | 13.7 | 0 |
+| baseline_plus_class_weights | 3 | 0.900 +- 0.015 | 0.886 | 0.944 (0.927) | 6.3 | 0 |
+| baseline_plus_l2 | 3 | 0.894 +- 0.011 | 0.882 | 0.940 (0.919) | 6.0 | 0 |
+| baseline_plus_dropout | 3 | 0.891 +- 0.004 | 0.886 | 0.958 (0.947) | 5.0 | 0 |
+| baseline_plus_gap | 3 | 0.860 +- 0.050 | 0.803 | 0.846 (0.667) | 66.0 | 0 |
+| baseline_plus_batch_norm | 3 | 0.547 +- 0.090 | 0.443 | 0.359 (0.095) | 1.3 | 3 |
+
+A collapsed seed is a run whose best epoch is 1 or 2 and that stopped at epoch 16 or 17.
+
+- S5-A1 (momentum 0.9): right. All 5 seeds converge, 0.940 +- 0.005, worst 0.934, rainy F1 at least 0.947, best epochs 28 to 42, 1.4 min per run. Validation loss already follows training at epoch 2 (seed 22: 0.75 at momentum 0.9 against 1.40 at 0.99).
+- S5-A2 (momentum 0.8): right. Same mean as A1 (difference 0.004, below one std), noisier (std 0.018, worst seed 0.910).
+- S5-B1 (patience 30, no stop before epoch 21): right on convergence (5 of 5, 0.937 +- 0.004) and on cost (73 epochs, 1.9 min per run, against 49 and 1.4 for A1). Wrong on timing: best epochs 33 to 51, earlier than the 45 to 65 expected.
+- S5-C1 (+ batch norm): right on direction, wrong on size. All 3 seeds collapse (best epoch 1 or 2), 0.547 +- 0.090. The lag is not milder with 2 batch norm layers.
+- S5-C2 (+ dropout 0.3): no difference (0.891, 0.017 below the baseline, within its std 0.027). Wrong on later best epochs (5, against 7.6).
+- S5-C3 (+ L2): right, no difference (0.894).
+- S5-C4 (+ class weights): right, no difference (0.900).
+- S5-C5 (+ medium augmentation): wrong. No gain (0.905, 0.003 below the baseline). Best epochs are later (13.7 against 7.6, about 1.8 times), less than the 2 to 4 times expected.
+- S5-C6 (+ global average pooling): right on direction and on much longer training (best epochs 42 to 80), wrong on size. 0.860 +- 0.050 is 0.048 below the baseline, just inside one std (0.050), so by rule 2 not a clear drop. With 28k parameters it still reaches 0.89 on 2 of 3 seeds.
+- S5-D1 (learning rate 3e-4): right, no fix. 1 of 5 seeds collapses (seed 22, macro F1 0.125: every validation image called cloudy). The 4 converged seeds give 0.928 +- 0.009.
+- S5-D2 (5-epoch warmup): right, no fix. Seed 22 collapses the same way. The 4 converged seeds give 0.940 +- 0.013.
+- S5-D3 (light augmentation): right, no fix. 4 of 5 seeds collapse. The converged seed (55) gives 0.956, the best single run of the section.
+- Collapse mechanism, checked in `history.csv` for all 12 collapsed runs of Sections 3 and 5: training accuracy rises smoothly to 0.91 to 1.00 by the stop. Validation loss starts at 0.96 to 1.63, peaks at 2.6 to 6.0 between epochs 5 and 11, and is still above its epoch 1 or 2 value at epoch 16 or 17. So early stopping fires and restores the epoch 1 or 2 weights. Those weights score 0.26 to 0.66 in inference mode on their own training images. At the stop, validation accuracy was 0.53 to 0.72, at or above its epoch 1 to 2 value in 11 of 12 runs, so the runs were recovering when they were stopped. It is the S3-E4 race again.
+- Every collapse in Sections 3 and 5 is at batch norm momentum 0.99 with patience 15 and no minimum epoch count: 12 of 23 such runs. At momentum 0.9 or 0.8: 0 of 10. At momentum 0.99 with patience 30 and no stop before epoch 21: 0 of 5. Seed 22 collapsed in all four R0-type arms at momentum 0.99 (R0, D1, D2, D3), and seed 55 converged in all four. Which seed collapses depends on the seed, not only on the arm.
+- Converged seeds land at the same level whatever the arm (0.93 to 0.96). Learning rate, warmup and augmentation strength do not change the converged level by more than one std.
+- Conclusion: the batch norm moving statistics lag (momentum 0.99, 23 steps per epoch) is the cause of every R0 failure. Two independent fixes work: a lower momentum, or a stopping rule that cannot fire during the lag. Converged R0 (0.937 to 0.940) beats the baseline (0.908) by more than one baseline std, with 27 times fewer parameters. No single R0 technique added to the baseline improves it by more than one std. Batch norm alone breaks it at momentum 0.99.
+- Selection (rule fixed before running): `r0_patience30_min20`. It ties with momentum 0.9 and 0.8 on mean and has the lowest std. Details and rejected options: `DECISION.md`.
+
+## S7-E1: Final model of r0_patience30_min20 on the locked test set (hypothesis written 2026-11-25, before the test set is used)
+
+- Plan: Section 7 group `final` on Kaggle. Train the selected configuration with 5 seeds under the same protocol, pick the seed by validation, export H5 and ONNX, check ONNX parity on all 144 validation images before the test set is loaded, then evaluate the 134 test images once (`DECISION.md`).
+- Hypothesis: validation macro F1 of the chosen seed about 0.94 (the Section 5 seeds gave 0.934 to 0.944). Test macro F1 between 0.90 and 0.95, a little below validation, because the seed is picked on validation (an optimistic pick of about 0.005) and the test set has a different class mix (40 shiny images; shiny is the weakest class at validation F1 0.887). The bootstrap 95% interval about +-0.04 wide. Rainy test F1 0.90 or more, with an interval about +-0.07 wide (29 images). A test score more than 0.05 below validation would point to over-tuning on validation or to a shift between the splits, and would be investigated before export.
+- ONNX parity: maximum probability difference near 1e-6 (Keras on CPU against ONNX Runtime on CPU). Section 5 showed that GPU against CPU alone moves the probabilities by 1.5e-4, so parity is measured on CPU only.
+
 ## Test set touches
 
 | date | section | what | by |

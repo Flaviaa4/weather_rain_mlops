@@ -38,3 +38,4 @@ locust/results/*.html
 
 experiments/smoke/
 *.keras
+experiments/incoming/

@@ -139,6 +139,26 @@ def test_save_without_optimizer_predicts_the_same_and_is_not_larger(tmp_path):
     assert sizes[0] <= sizes[1]
 
 
+def test_final_export_writes_h5_and_onnx_with_parity(tmp_path):
+    import shutil
+    from src import final_model
+    from tests.conftest import write_tiny_dataset
+    data_dir = write_tiny_dataset(tmp_path / "data", per_class=6)
+    shutil.copytree(data_dir / "valid", data_dir / "test")
+    ctx = {"section": 7, "group": "test", "data_dir": data_dir, "dir": tmp_path / "exp", "smoke": True, "backup": False}
+    cfg = small(grids.final_config())
+    experiments.run_one(cfg, 11, ctx)
+    record = final_model.run_final(cfg, ctx)
+    paths = final_model.output_paths(ctx["dir"])
+    assert record["parity"]["validation"]["passed"] and record["parity"]["test"]["n_images"] == 24
+    reloaded = model.keras.models.load_model(paths["h5"], compile=False)
+    images = experiments.load_split_cached("valid", 32, data_dir)[0]
+    onnx_probs = final_model.onnx_probabilities(paths["onnx"], images)
+    assert np.abs(final_model.keras_probabilities(reloaded, images) - onnx_probs).max() < final_model.PARITY_TOLERANCE
+    with pytest.raises(RuntimeError, match="already evaluated"):
+        final_model.run_final(cfg, ctx)
+
+
 def test_section5_smoke_config_runs_end_to_end(tiny_dataset, tmp_path):
     ctx = {"section": 5, "group": "test", "data_dir": tiny_dataset, "dir": tmp_path, "smoke": True, "backup": False}
     for cfg in grids.smoke_configs(5):

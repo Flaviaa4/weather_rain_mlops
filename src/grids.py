@@ -55,9 +55,16 @@ def optimizer_and_augment_configs():
             variant(R0, "r0_augment_light", augment="light")]
 
 
+# chosen in Section 5 by the rule in experiments/DECISION.md, fixed before the test set was touched
+def final_config():
+    return stopping_rule_configs()[0]
+
+
 def smoke_configs(section):
     if section == 3:
         return [BASELINE, R0, R0_SHUFFLED_LABELS]
+    if section == 7:
+        return [variant(final_config(), "smoke_final")]
     return [variant(R0, "smoke_r0_options", bn_momentum=0.9, warmup_epochs=2, min_epochs=1, early_stop_patience=30,
                     learning_rate=3e-4, augment="light"),
             variant(BASELINE, "smoke_baseline_options", **{k: v for step in ABLATION_STEPS.values() for k, v in step.items()})]
@@ -75,6 +82,9 @@ def section_groups(section):
             "B": {"configs": stopping_rule_configs(), "seeds": config.SEEDS},
             "C": {"configs": ablation_configs(), "seeds": config.SEEDS[:3]},
             "D": {"configs": optimizer_and_augment_configs(), "seeds": config.SEEDS},
+        },
+        7: {
+            "final": {"configs": [final_config()], "seeds": config.SEEDS, "final_export": True},
         },
     }
     if section not in groups:

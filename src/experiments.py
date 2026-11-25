@@ -29,6 +29,7 @@ COLAB_UNITS_PER_HOUR = float(os.environ.get("COLAB_UNITS_PER_HOUR", "1.96"))
 UNIT_BUDGET = 0.6 * float(os.environ.get("COLAB_UNITS_REMAINING", "74"))
 DATA_CACHE = {}
 DIAG_SECTIONS = {3}
+FINAL_SECTIONS = {7}
 
 
 def config_hash(cfg):
@@ -460,7 +461,11 @@ def run_smoke(ctx):
     run_overfit_check(smoke_ctx, steps=20)
     if ctx["section"] in DIAG_SECTIONS:
         run_diag(smoke_ctx, steps=3)
-    LOGGER.info("Smoke test passed: runs, artifacts, results.csv, resume skip and overfit check work (plus diag in Section 3)")
+    if ctx["section"] in FINAL_SECTIONS:
+        from src import final_model
+        final_model.run_final(configs[0], smoke_ctx, test_split="valid")
+    LOGGER.info("Smoke test passed: runs, artifacts, results.csv, resume skip and overfit check work "
+                "(plus diag in Section 3, export and parity in Section 7)")
 
 
 def require_gpu():
@@ -480,7 +485,11 @@ def run_group(section, group, ctx):
     spec = grids.section_groups(section)[group]
     if spec.get("overfit_check"):
         run_overfit_check(ctx)
-    return run_grid(spec["configs"], spec["seeds"], ctx)
+    finished = run_grid(spec["configs"], spec["seeds"], ctx)
+    if spec.get("final_export"):
+        from src import final_model
+        final_model.run_final(spec["configs"][0], ctx)
+    return finished
 
 
 def run_diag(ctx, **kwargs):

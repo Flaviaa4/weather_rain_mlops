@@ -1,0 +1,27 @@
+{
+  "versions": {
+    "python": "3.13.16",
+    "platform": "Linux-6.18.55+-x86_64-with-glibc2.39",
+    "tensorflow": "2.21.0",
+    "keras": "3.13.2",
+    "tf2onnx": "1.17.0",
+    "onnx": "1.23.2",
+    "onnxruntime": "1.32.0",
+    "numpy": "2.4.6",
+    "pandas": "2.2.3",
+    "PIL": "11.3.0",
+    "matplotlib": "3.10.0",
+    "protobuf": "6.33.6"
+  },
+  "gpus": [
+    "/physical_device:GPU:0"
+  ],
+  "h5_save": true,
+  "onnx_roundtrip": {
+    "method": "from_keras",
+    "max_abs_diff": 2.9802322387695312e-08,
+    "passed": true
+  }
+}
+FAILED IMPORTS: none
+WARNING:absl:You are saving your model as an HDF5 file via `model.save()` or `keras.saving.save_model(model)`. This file format is considered legacy. We recommend using instead the native Keras format, e.g. `model.save('my_model.keras')` or `keras.saving.save_model(model, 'my_model.keras')`. 

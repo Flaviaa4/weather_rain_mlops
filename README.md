@@ -139,4 +139,10 @@ All model paths come from `MODEL_NAME` in [src/config.py](src/config.py):
 MODEL_NAME = os.environ.get("MODEL_NAME", "placeholder_model")
 ```
 
-When Section 7 saves `models/weather_cnn.h5`, `models/weather_cnn.onnx`, `models/metrics.json` and `models/class_names.json`, change that default to `"weather_cnn"` (or set `MODEL_NAME=weather_cnn` in `.env`) and run `docker compose up -d`. Nothing else changes.
+The final model is trained on Kaggle by Section 7 (`SECTION = 7`, `GROUP = "smoke,final"` in [kaggle/run_section.ipynb](kaggle/run_section.ipynb)). The group writes `weather_cnn.h5`, `weather_cnn.onnx`, `metrics.json` (with `validation` and `test` keys) and `class_names.json` to `experiments/final_model/` inside the results zip. Install them with:
+
+```bash
+python -m src.final_model --install experiments/incoming/section7
+```
+
+The install step checks that the ONNX file is the one the test set was evaluated with, that ONNX parity passed, and that the ONNX model reproduces the recorded validation macro F1 on `data/valid`. Then it copies the four files into `models/`. After that, change the default above to `"weather_cnn"` (or set `MODEL_NAME=weather_cnn` in `.env`) and run `docker compose up -d`. Nothing else changes.

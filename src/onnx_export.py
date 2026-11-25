@@ -18,7 +18,7 @@ def input_signature(size=config.IMAGE_SIZE):
 def export_with_from_keras(model, onnx_path):
     import tf2onnx
     model.output_names = ["probabilities"]
-    tf2onnx.convert.from_keras(model, input_signature=input_signature(), output_path=str(onnx_path))
+    tf2onnx.convert.from_keras(model, input_signature=input_signature(model.input_shape[1]), output_path=str(onnx_path))
 
 
 def export_with_saved_model(model, onnx_path):
