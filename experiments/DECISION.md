@@ -28,7 +28,7 @@ Not eligible (worst seed below 0.85): R0 (0.429), r0_lr3e-4 (0.125), r0_warmup5 
 - Lowest std among the tied configurations: r0_patience30_min20 (0.0041, against 0.0046 and 0.0181).
 - **Selected: r0_patience30_min20.** It is R0 (batch norm momentum 0.99) with early stopping patience 30, and neither early stopping nor the best-weight restore may act on epochs 1 to 20.
 
-The three R0 arms are equivalent on validation (all differences are below one std, rule 2 of CLAUDE.md), and the tie-break is decided by 0.0004 of std. The rule was fixed before the results were seen, so it stands. The playbook tie-break (lower std of rainy F1) gives the same answer: 0.014 against 0.019 and 0.040. Parameters and latency do not separate them (same network).
+The three R0 arms are equivalent on validation (all differences are below one std, rule 2 of the experiment rules), and the tie-break is decided by 0.0004 of std. The rule was fixed before the results were seen, so it stands. The playbook tie-break (lower std of rainy F1) gives the same answer: 0.014 against 0.019 and 0.040. Parameters and latency do not separate them (same network).
 
 ## Rejected options
 

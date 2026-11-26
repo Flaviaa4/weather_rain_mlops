@@ -41,7 +41,7 @@ Format per entry: id, date, section, what changes, hypothesis (direction, size, 
 - Change: augmentation strength light, medium, strong, 8 samples of one image per class.
 - Hypothesis: light and medium keep every label. Strong brightness and hue changes make some sunrise images look like cloudy or shiny (a darkened or color-shifted sunset), because sunrise is defined by warm color at the horizon.
 - Run: Colab CPU runtime, 2026-11-24, `experiments/colab_section2.log`. Previews `experiments/figures/augmentation_preview_{light,medium,strong}.png`, 6 rows (one random train image per class, the least saturated sunrise, the brightest cloudy), 8 augmented copies each, seed 11. Parameters at preview time: light hue 0, medium hue 0.02 and saturation 0.2, strong hue 0.05 and saturation 0.35.
-- Result (reviewed by the user and by Claude Code): light and medium keep every label. Strong does not: sunrise copies turn washed-out pink-gray (saturation 0.35) or nearly black (brightness 0.2 with contrast 0.35), the brightest cloudy image goes almost white and loses cloud detail, and the shiny sea gets a teal cast from the hue shift.
+- Result (reviewed by the user and by the AI assistant): light and medium keep every label. Strong does not: sunrise copies turn washed-out pink-gray (saturation 0.35) or nearly black (brightness 0.2 with contrast 0.35), the brightest cloudy image goes almost white and loses cloud detail, and the shiny sea gets a teal cast from the hue shift.
 - Hypothesis: right that light and medium are safe and that strong breaks sunrise. Partly wrong on the cause: saturation and brightness do more damage than hue, and hue also hurts shiny.
 - Conclusion (user decision): medium is the R0 default. Hue is 0 at every level. Strong stays only as an experiment arm, with saturation capped at 0.2. These changes only make augmentation milder, so the medium review still holds. The new strong setting has not been previewed: rerun the previews before strong is used in a grid.
 
@@ -244,7 +244,7 @@ Surprise: Section 7 ran the same configuration hash, seeds, TensorFlow 2.21.0 an
 
 | date | section | what | by |
 |---|---|---|---|
-| 2026-11-22 | 1 | Data audit only: file properties, duplicate detection, quarantine of 31 duplicate test copies. No model was evaluated. | Claude Code |
-| 2026-11-24 | 2 | File counts per class only, for `class_distribution.png`. No image features, no model. | Claude Code |
+| 2026-11-22 | 1 | Data audit only: file properties, duplicate detection, quarantine of 31 duplicate test copies. No model was evaluated. | AI assistant |
+| 2026-11-24 | 2 | File counts per class only, for `class_distribution.png`. No image features, no model. | AI assistant |
 | 2026-11-25 | 7 | Final model `s7_r0_patience30_min20_seed55` evaluated once on all 134 test images inside `src/final_model.py` on Kaggle (12:19:10 UTC, guard file `experiments/final_model/test_touch.json`, ONNX sha256 31892c5c...). Metrics, bootstrap CI and ONNX parity written to `metrics.json`. The smoke run before it used the valid split as its stand-in test split, not the test set. | Kaggle job |
-| 2026-11-25 | 7 | Local install: read the saved test record and predictions to write up S7-E1. No model was run on test images and no image was opened. | Claude Code |
+| 2026-11-25 | 7 | Local install: read the saved test record and predictions to write up S7-E1. No model was run on test images and no image was opened. | AI assistant |
