@@ -4,7 +4,7 @@ Image classifier for four weather classes (cloudy, rainy, shiny, sunrise) that s
 
 > **Model status:** the services run the final model `weather_cnn` (Section 7, seed 55 of `r0_patience30_min20`). On the locked test set, evaluated once: **macro F1 0.900** (95% CI 0.845 to 0.947), accuracy 0.903, rainy recall 0.966. Validation macro F1 is 0.962, which is optimistic because the seed was the best of 5 picked on validation. Full record: [models/metrics.json](models/metrics.json). See [The final model](#the-final-model).
 
-Video demo: _link added in Section 14_. Live URL: http://74.148.56.220 (see the [Deployment guide](#deployment-guide)).
+Video demo: https://www.youtube.com/watch?v=H0xv6HVNI90. Live URL: http://74.148.56.220 .
 
 ## Architecture
 
